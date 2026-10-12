@@ -1,0 +1,43 @@
+{
+  "name": "spec-taskchain",
+  "version": "0.1.0",
+  "description": "SpecTaskChain - 规格驱动的任务队列。Chain = 接力（relay），不是依赖（dependency）。",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "taskq": "bin/taskq"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepublish": "npm run build",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "task-queue",
+    "spec-driven",
+    "ai",
+    "cli",
+    "unattended",
+    "relay"
+  ],
+  "author": "SpecTaskChain Team <windfallsheng@aliyun.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/windfallsheng/SpecTaskChain.git"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
