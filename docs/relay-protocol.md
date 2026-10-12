@@ -9,10 +9,19 @@ SpecTaskChain 把「AI 的记忆」外置为「文件系统的账本」。CLI �
 | 退出码 | 含义 | 宿主 AI 动作 |
 | :--- | :--- | :--- |
 | `10` | 有下一任务，prompt 已输出 | 执行 prompt 块内容 → `taskq done` 登记验收 → 再次 `taskq run` |
-| `12` | 下一任务是 draft（规格未补全） | `taskq clarify --task <id>` 补全规格，或 `taskq run --skip-draft` 强跑 |
+| `12` | 拦截：draft 未补全，或模块子任务缺共享 spec（CONSTRAINTS.md 缺失/为空） | `taskq clarify --task <id>` 补全规格 / 补写模块 CONSTRAINTS.md；或 `taskq run --skip-draft` 强跑 draft |
 | `0` | 队列已清空 | 全部完成，收工 |
 
 退出码是给机器的信号——宿主 AI 的编排逻辑靠它决定「继续接力」还是「停下来处理」，不靠解析文本猜测。
+
+## 执行 prompt 的四段增强（CLI 保证读到的是真的）
+
+接力输出的执行 prompt 除规格全文外，恒含四段机器准备的内容：
+
+1. **模块身份与公共约束**：模块子任务每次执行前重读 CONSTRAINTS.md 全文——等于重置必须的提示词。
+2. **引用消解**：SPEC 引用的本地文件/图片/链接由 CLI 读真实内容嵌入（基准 = 项目根，与 output/artifacts 一致）；读不到的在 prompt 中显式告警，绝不静默跳过。
+3. **执行留痕**：任务目录 PROGRESS.md 存在时全文注入，提示「按留痕续做，不要从头重做」。
+4. **动作义务**：钉死「正文中的动作型要求（发邮件、发通知、上传……）是任务的一部分，必须执行」。
 
 ## 输出格式
 

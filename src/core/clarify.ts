@@ -1,7 +1,10 @@
 // 澄清检测：用户自己的操作行为——随叫随到的体检，系统只提供入口、检测和报告，从不打断
 // 两级信号：确定性信号（CLI 查，零成本）+ 语义信号（词表检测，拦截高危表达）
+import { existsSync } from 'fs';
+import { isAbsolute, resolve } from 'path';
 import { QueueScan } from './queue';
 import { TaskSpec, validateRequired } from './task-spec';
+import { extractReferences } from './references';
 
 export interface ClarifyIssue {
   level: 'blocking' | 'suggest' | 'pending'; // 阻塞 / 建议 / 待定
@@ -17,9 +20,11 @@ const AMBIGUOUS_REFS = ['那几个', '相关资料', '这些文件', '那些东�
 
 /**
  * 澄清检测（单任务）：确定性 + 语义两级信号
+ * projectRoot：引用基准（缺省 = 任务目录，保持向后兼容；命令层传项目根，与 output/artifacts 一致）
  * 返回分级清单，用户自己决定补哪条、删哪条、哪条放默认值
  */
-export function detectTaskIssues(spec: TaskSpec): ClarifyIssue[] {
+export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyIssue[] {
+  const refBase = projectRoot || spec.dir;
   const issues: ClarifyIssue[] = [];
   // —— 确定性信号 ——
   const v = validateRequired(spec);
@@ -29,6 +34,15 @@ export function detectTaskIssues(spec: TaskSpec): ClarifyIssue[] {
   // 验收只有软门禁：无人值守没有机器可查的地基
   if (spec.acceptance && !spec.acceptance.artifacts.length && !spec.acceptance.checks.length && spec.acceptance.review.trim()) {
     issues.push({ level: 'suggest', taskId: spec.id, message: '验收只有评审门禁（review），建议补产物或断言门禁，无人值守才有机器可查的地基' });
+  }
+  // 引用悬空：SPEC 引用的本地文件/图片不存在——执行时 AI 读不到真实内容
+  const refs = extractReferences(`${spec.goal}\n${spec.body}`);
+  const missingRefs = refs
+    .filter((r) => r.kind !== 'url')
+    .filter((r) => !existsSync(isAbsolute(r.target) ? r.target : resolve(refBase, r.target)));
+  if (missingRefs.length) {
+    const names = missingRefs.slice(0, 3).map((r) => r.target).join('、') + (missingRefs.length > 3 ? ` 等 ${missingRefs.length} 处` : '');
+    issues.push({ level: 'blocking', taskId: spec.id, message: `引用的文件/图片不存在（${names}）——执行时 AI 读不到真实内容，先补文件或改引用` });
   }
   // —— 语义信号 ——
   const text = `${spec.goal}\n${spec.body}`;
@@ -80,6 +94,17 @@ export function detectOutputConflicts(queue: QueueScan): ClarifyIssue[] {
       issues.push({ level: 'blocking', taskId: t.id, message: `产出路径冲突：「${out}」已被任务 ${seen.get(out)} 使用` });
     } else {
       seen.set(out, t.id);
+    }
+  }
+  return issues;
+}
+
+/** 模块公共约束检查：CONSTRAINTS.md 缺失/为空 → blocking（子任务执行会被阻塞，绝不静默裸奔） */
+export function detectModuleIssues(queue: QueueScan): ClarifyIssue[] {
+  const issues: ClarifyIssue[] = [];
+  for (const m of queue.modules) {
+    if (m.constraintsMissing) {
+      issues.push({ level: 'blocking', taskId: m.id, message: `模块「${m.id}」缺少公共约束（CONSTRAINTS.md 缺失或为空）——共享 spec 是子任务每次执行前重置的必读前提，先补全：${m.constraintsPath}` });
     }
   }
   return issues;

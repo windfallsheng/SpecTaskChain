@@ -1,6 +1,6 @@
 // 队列扫描：队列是第一公民——一堆任务，无人值守接力完成
 // 扫描两层：顶层任务（tasks/{id}/）+ 模块子任务（tasks/{module}/{sub}/，第三层天然不被误扫为独立任务）
-import { readdirSync, existsSync, statSync } from 'fs';
+import { readdirSync, existsSync, statSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TaskSpec, readSpec } from './task-spec';
 import { resolveTaskType } from './task-type';
@@ -9,6 +9,7 @@ export interface ModuleInfo {
   id: string;               // 模块 ID
   constraintsPath: string;  // 公共约束文件（00-specs 的等价物：CONSTRAINTS.md）
   constraints: string;      // 约束内容（每次执行子任务前重读）
+  constraintsMissing: boolean; // CONSTRAINTS.md 缺失或为空——子任务执行时阻塞（共享 spec 是必读前提）
   subtasks: TaskSpec[];     // 第三层子任务
 }
 
@@ -46,10 +47,11 @@ export function scanQueue(queueDir: string, metaDir: string): QueueScan {
         const spec = readSpec(subFull, resolveTaskType(metaDir, 'general').name);
         if (spec) subtaskSpecs.push(spec);
       }
-      const constraints = existsSync(constraintsPath)
-        ? require('fs').readFileSync(constraintsPath, 'utf-8')
-        : '';
-      modules.push({ id: entry, constraintsPath, constraints, subtasks: subtaskSpecs });
+      const hasConstraints = existsSync(constraintsPath);
+      const constraints = hasConstraints ? readFileSync(constraintsPath, 'utf-8') : '';
+      // 共享 spec 缺失或为空 → 标记：执行子任务时阻塞（绝不静默裸奔）
+      const constraintsMissing = !hasConstraints || !constraints.trim();
+      modules.push({ id: entry, constraintsPath, constraints, constraintsMissing, subtasks: subtaskSpecs });
     }
   }
   return { tasks, modules };

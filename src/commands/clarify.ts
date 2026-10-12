@@ -9,6 +9,7 @@ import {
   detectTaskIssues,
   detectDanglingDeps,
   detectOutputConflicts,
+  detectModuleIssues,
   renderClarifyReport,
   ClarifyIssue,
 } from '../core/clarify';
@@ -16,7 +17,7 @@ import {
 export interface ClarifyOptions {
   taskId?: string;  // 单任务（按 ID）
   file?: string;    // 直接指文件（手动写场景：宿主 AI 消解「上面的内容」后传入）
-  chain?: boolean;  // 建链前查：整队体检（依赖悬空 + 产出冲突 + 各任务三必填）
+  chain?: boolean;  // 建链前查：整队体检（依赖悬空 + 产出冲突 + 模块公共约束 + 各任务三必填）
 }
 
 /** 从文件路径找任务 ID（宿主 AI 消解「上面」后传入的就是这里） */
@@ -43,7 +44,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     const { data, body } = parseFrontmatter(content);
     const id = taskIdFromFile(resolved) || '此文件';
     const spec = buildSpec(id, resolved, data, body, 'general');
-    issues = detectTaskIssues(spec);
+    issues = detectTaskIssues(spec, cfg.projectRoot);
     return renderClarifyReport(issues);
   }
 
@@ -54,18 +55,19 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     if (!found) {
       return `❌ 未找到任务「${opts.taskId}」。可用：taskq list 查看队列清单。`;
     }
-    issues = detectTaskIssues(found);
+    issues = detectTaskIssues(found, cfg.projectRoot);
     return renderClarifyReport(issues);
   }
 
-  // 建链前查（无参数）：整队体检——只查链执行必翻车的硬伤
-  issues = [...detectDanglingDeps(queue), ...detectOutputConflicts(queue)];
-  for (const t of queue.tasks) issues.push(...detectTaskIssues(t));
+  // 建链前查（无参数）：整队体检——只查链执行必翻车的硬伤（依赖/产出冲突/模块公共约束/各任务三必填）
+  issues = [
+    ...detectDanglingDeps(queue),
+    ...detectOutputConflicts(queue),
+    ...detectModuleIssues(queue),
+  ];
+  for (const t of queue.tasks) issues.push(...detectTaskIssues(t, cfg.projectRoot));
   for (const m of queue.modules) {
-    for (const s of m.subtasks) issues.push(...detectTaskIssues(s));
-    if (!m.constraints.trim()) {
-      issues.push({ level: 'pending', taskId: m.id, message: '任务模块未挂公共约束（CONSTRAINTS.md 为空）——共享 spec 院落没有内容' });
-    }
+    for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot));
   }
   const report = renderClarifyReport(issues);
   if (!queue.tasks.length && !queue.modules.length) {

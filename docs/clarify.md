@@ -20,6 +20,8 @@
 - 缺三必填：goal / output / acceptance（至少一项非空）
 - 依赖悬空：`depends-on` 指向不存在的任务
 - 产出路径冲突：两个任务写同一位置
+- 引用悬空：SPEC 引用的本地文件/图片不存在——执行时 AI 读不到真实内容（基准 = 项目根，与 output/artifacts 一致）
+- 模块缺共享 spec：CONSTRAINTS.md 缺失或为空——子任务每次执行前都要重读它，缺了会阻塞接力
 
 ### ⚠️ 建议（suggest）——建议处理
 
