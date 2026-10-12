@@ -17,6 +17,7 @@ export interface AcceptanceSpec {
 export interface TaskSpec {
   id: string;             // 任务 ID（目录名）
   dir: string;            // 任务目录绝对路径
+  name?: string;          // 显示名（frontmatter name，人类可读；目录名是 ASCII 机器身份）
   type: string;           // 任务类型（默认 general）
   goal: string;           // 目标（三必填之一，一句话也行）
   output: string;         // 产出位置（三必填之一）
@@ -166,6 +167,7 @@ export function buildSpec(id: string, dir: string, data: Record<string, any>, bo
   return {
     id,
     dir,
+    name: data.name ? String(data.name) : undefined,
     type: String(data.type || defaultType || 'general'),
     goal: String(data.goal || ''),
     output: String(data.output || ''),
@@ -191,10 +193,11 @@ export function readSpec(dir: string, defaultType = 'general'): TaskSpec | null 
 
 /** 生成 SPEC.md 文件内容（frontmatter + 正文） */
 export function renderSpec(spec: {
-  type?: string; goal: string; output: string; acceptance: AcceptanceSpec; dependsOn?: string[]; draft?: boolean; body?: string;
+  type?: string; goal: string; output: string; acceptance: AcceptanceSpec; dependsOn?: string[]; draft?: boolean; body?: string; name?: string;
 }): string {
   const lines: string[] = ['---'];
   lines.push(`type: ${spec.type || 'general'}`);
+  if (spec.name && spec.name.trim()) lines.push(`name: ${spec.name.trim()}`);
   lines.push(`goal: ${spec.goal}`);
   lines.push(`output: ${spec.output}`);
   if (spec.dependsOn && spec.dependsOn.length) {

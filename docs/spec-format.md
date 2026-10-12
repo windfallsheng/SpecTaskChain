@@ -16,6 +16,7 @@
 | `goal` | ✅ | 目标，一句话也行（任务要做什么） |
 | `output` | ✅ | 产出位置（相对项目根的目录，如 `docs/`、`src/auth/`） |
 | `acceptance` | ✅ | 验收三态：artifacts + checks + review（至少一项非空） |
+| `name` | 可选 | 显示名（人类可读，可中文）；目录名是 ASCII 机器身份，两者分工 |
 | `type` | 可选 | 任务类型，缺省 `general`（见 [queue-structure.md](queue-structure.md#任务类型)） |
 | `depends-on` | 可选 | 依赖的任务 ID 列表，声明后才参与拓扑排序 |
 | `draft` | 可选 | `true` = 规格未补全，`taskq run` 会拦截（`--skip-draft` 强跑） |

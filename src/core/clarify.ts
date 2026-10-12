@@ -5,6 +5,7 @@ import { isAbsolute, resolve } from 'path';
 import { QueueScan } from './queue';
 import { TaskSpec, validateRequired } from './task-spec';
 import { extractReferences } from './references';
+import { isPlaceholderSlug, hasNonAscii } from './task-naming';
 
 export interface ClarifyIssue {
   level: 'blocking' | 'suggest' | 'pending'; // 阻塞 / 建议 / 待定
@@ -43,6 +44,14 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyI
   if (missingRefs.length) {
     const names = missingRefs.slice(0, 3).map((r) => r.target).join('、') + (missingRefs.length > 3 ? ` 等 ${missingRefs.length} 处` : '');
     issues.push({ level: 'blocking', taskId: spec.id, message: `引用的文件/图片不存在（${names}）——执行时 AI 读不到真实内容，先补文件或改引用` });
+  }
+  // —— 命名体检：目录名是机器身份，可读性不能被占位符/非 ASCII 吃掉 ——
+  const dirSlug = spec.id.replace(/^\d+-/, '');
+  if (isPlaceholderSlug(dirSlug)) {
+    issues.push({ level: 'suggest', taskId: spec.id, message: `目录名「${dirSlug}」是随机占位（t+时间戳），可读性差——建议用 --name 重建，或在 frontmatter 补 name 显示名` });
+  }
+  if (hasNonAscii(spec.id)) {
+    issues.push({ level: 'suggest', taskId: spec.id, message: '目录名含非 ASCII 字符——建议 ASCII slug 作目录名，中文显示名写 frontmatter name 字段' });
   }
   // —— 语义信号 ——
   const text = `${spec.goal}\n${spec.body}`;
@@ -107,6 +116,26 @@ export function detectModuleIssues(queue: QueueScan): ClarifyIssue[] {
       issues.push({ level: 'blocking', taskId: m.id, message: `模块「${m.id}」缺少公共约束（CONSTRAINTS.md 缺失或为空）——共享 spec 是子任务每次执行前重置的必读前提，先补全：${m.constraintsPath}` });
     }
   }
+  return issues;
+}
+
+/** 命名重复检查：同层任务 slug 撞名（同名易混，清单浏览时分不清谁是谁） */
+export function detectDuplicateNames(queue: QueueScan): ClarifyIssue[] {
+  const issues: ClarifyIssue[] = [];
+  const check = (entries: { id: string }[], layer: string) => {
+    const seen = new Map<string, string>();
+    for (const e of entries) {
+      const slug = e.id.replace(/^\d+-/, '');
+      if (seen.has(slug)) {
+        issues.push({ level: 'suggest', taskId: e.id, message: `${layer} slug「${slug}」与「${seen.get(slug)}」重复——建议区分名字，清单浏览时才能一眼分清` });
+      } else {
+        seen.set(slug, e.id);
+      }
+    }
+  };
+  check(queue.tasks, '任务');
+  check(queue.modules, '模块');
+  for (const m of queue.modules) check(m.subtasks, `模块「${m.id}」子任务`);
   return issues;
 }
 

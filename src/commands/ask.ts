@@ -24,10 +24,19 @@ export function askCommand(cfg: TaskQConfig, input: string): string {
     case 'list':
       return listCommand(cfg);
     case 'new':
-      // 提取任务描述（「建个任务：写文档」→ 写文档）
+      // 提取任务描述（「建个任务：写文档」→ 写文档）；创建命名（叫 X 的/--name/--group）由意图识别带出
       const goalMatch = input.match(/任务[:：]?\s*(.+)$/);
-      const goal = goalMatch ? goalMatch[1].trim() : input;
-      return newCommand(cfg, { goal: goal.slice(0, 60), draft: false });
+      let goal = goalMatch ? goalMatch[1].trim() : input;
+      if (result.params.group) {
+        // 剥掉「放 X 模块」后缀，goal 只留任务本身
+        goal = goal.replace(new RegExp(`[,，]?\\s*放?${result.params.group}模块$`), '').trim();
+      }
+      return newCommand(cfg, {
+        goal: goal.slice(0, 60),
+        draft: false,
+        name: result.params.taskName,
+        group: result.params.group,
+      });
     case 'done':
       return `任务完成登记：taskq done ${result.params.taskId || '<task-id>'} --verdict "pass 评审结论"`;
     default:

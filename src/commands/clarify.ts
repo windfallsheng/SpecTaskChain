@@ -10,6 +10,7 @@ import {
   detectDanglingDeps,
   detectOutputConflicts,
   detectModuleIssues,
+  detectDuplicateNames,
   renderClarifyReport,
   ClarifyIssue,
 } from '../core/clarify';
@@ -59,11 +60,12 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     return renderClarifyReport(issues);
   }
 
-  // 建链前查（无参数）：整队体检——只查链执行必翻车的硬伤（依赖/产出冲突/模块公共约束/各任务三必填）
+  // 建链前查（无参数）：整队体检——只查链执行必翻车的硬伤（依赖/产出冲突/模块公共约束/各任务三必填/命名重复）
   issues = [
     ...detectDanglingDeps(queue),
     ...detectOutputConflicts(queue),
     ...detectModuleIssues(queue),
+    ...detectDuplicateNames(queue),
   ];
   for (const t of queue.tasks) issues.push(...detectTaskIssues(t, cfg.projectRoot));
   for (const m of queue.modules) {

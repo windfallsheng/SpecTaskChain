@@ -3,7 +3,8 @@ export { resolveConfig, ensureStructure, readState, writeState, TaskQConfig, Tas
 export { scanQueue, buildExecutionSequence, findNextPending, QueueScan, ModuleInfo, ExecutableTask } from './core/queue';
 export { TaskSpec, AcceptanceSpec, ArtifactRule, validateRequired, parseFrontmatter, renderSpec } from './core/task-spec';
 export { resolveTaskType, TaskTypeDefinition, listBuiltinTypes } from './core/task-type';
-export { detectTaskIssues, detectDanglingDeps, detectOutputConflicts, detectModuleIssues, renderClarifyReport, ClarifyIssue } from './core/clarify';
+export { detectTaskIssues, detectDanglingDeps, detectOutputConflicts, detectModuleIssues, detectDuplicateNames, renderClarifyReport, ClarifyIssue } from './core/clarify';
+export { toSlug, hasCJK, isPlaceholderSlug, hasNonAscii } from './core/task-naming';
 export { extractReferences, resolveReferences, Reference, ResolvedReference } from './core/references';
 export { runAcceptance, renderAcceptanceResult, AcceptanceResult } from './core/acceptance';
 export { relayNext, buildTaskPrompt, markTaskState, queueSummary, MAX_ATTEMPTS } from './core/runner';

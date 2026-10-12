@@ -5,7 +5,7 @@ export type IntentId = 'new' | 'clarify' | 'run' | 'status' | 'report' | 'list' 
 export interface IntentResult {
   intent: IntentId;
   confidence: number;
-  params: { taskId?: string; taskName?: string; file?: string };
+  params: { taskId?: string; taskName?: string; group?: string; file?: string };
   fullCommand: string;
   notes: string[];
 }
@@ -20,7 +20,7 @@ const INTENTS: { intent: IntentId; triggers: string[]; patterns: RegExp[]; base:
   {
     intent: 'new',
     base: 66,
-    triggers: ['建个任务', '新建任务', '加个任务', '加任务', '创建任务', '新增任务', '添加任务', '来一个任务'],
+    triggers: ['建个任务', '新建任务', '加个任务', '加任务', '创建任务', '新增任务', '添加任务', '来一个任务', '建个', '加个', '建一个', '加一个'],
     patterns: [/(?:建|加|创建|新增|添加)(?:个|一个)?任务[:：]?(.*)/, /新建(.+)任务/],
   },
   {
@@ -73,6 +73,19 @@ export function recognizeIntent(input: string): IntentResult {
       if (m) params.taskId = m[1];
       const fm = input.match(/--file\s+(\S+)/);
       if (fm) params.file = fm[1];
+      // 创建命名：--name X / --group X / 「叫/名为 X 的」/ 「X 模块」
+      const nm = input.match(/--name\s+(\S+)/);
+      if (nm) params.taskName = nm[1];
+      const gm = input.match(/--group\s+(\S+)/);
+      if (gm) params.group = gm[1];
+      if (!params.taskName) {
+        const cm = input.match(/(?:叫|名为|命名为)[:：]?\s*([^\s，,。？?]+)/);
+        if (cm) params.taskName = cm[1];
+      }
+      if (!params.group) {
+        const mm = input.match(/(?:放到|放入|放|加入|入|建|到|进)([^\s，,。？?]{1,20})模块/);
+        if (mm) params.group = mm[1];
+      }
       best = { intent: def.intent, confidence, params, fullCommand: '', notes };
     }
   }
@@ -88,6 +101,12 @@ export function recognizeIntent(input: string): IntentResult {
     case 'new':
       best.fullCommand = 'taskq new';
       if (input.includes('任务')) best.notes.push('建任务建议：taskq new "任务描述"（AI 生成规格草案，你确认后落盘）');
+      if (p.taskName || p.group) {
+        const parts: string[] = [];
+        if (p.taskName) parts.push(`--name ${p.taskName}`);
+        if (p.group) parts.push(`--group ${p.group}`);
+        best.notes.push(`已识别创建命名：${parts.join(' ')}（目录名走 slug 化，中文自动转全拼）`);
+      }
       break;
     case 'run': best.fullCommand = 'taskq run'; break;
     case 'status': best.fullCommand = 'taskq status'; break;

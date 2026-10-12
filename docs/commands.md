@@ -23,10 +23,12 @@ taskq new <描述> [--name 目录名] [--type 类型] [--group 模块名] [--dra
 | 参数 | 说明 |
 | :--- | :--- |
 | `<描述>` | 任务目标（用户原话，写入 goal） |
-| `--name` | 自定义目录名（英文 slug，缺省 `task-序号`；中文自动转随机序号占位） |
+| `--name` | 任务名：英文直接作目录 slug；中文转全拼（如 迁移文档 → qianyiwendang）同时原样写入 frontmatter `name` 显示名。缺省 `task-序号` |
 | `--type` | 任务类型（缺省 general，8 内置类型见 [queue-structure.md](queue-structure.md#任务类型)） |
-| `--group` | 模块名——建为模块子任务（共享 spec 的院落，自动创建 CONSTRAINTS.md 模板） |
+| `--group` | 模块名——建为模块子任务（共享 spec 的院落，自动创建 CONSTRAINTS.md 模板；模块名同样 slug 化，中文显示名记入模板标题） |
 | `--draft` | 静默落盘 draft 骨架，不请求 AI 草案 |
+
+命名机制 = 「对话成规格」的前半步：目录名是 ASCII 机器身份，显示名（`name` 字段）是人类可读身份。`taskq ask "建个叫 auth 的任务：写登录"` 也能识别创建命名（叫 X 的 / --name / --group / 放 X 模块）。
 
 不带 `--draft` 时，输出 `[TASKQ_SPEC_DRAFT]` 标记，请求宿主 AI 生成规格草案（补全 output/acceptance/正文）写回 SPEC.md。
 
