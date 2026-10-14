@@ -12,4 +12,4 @@ export { generateQueueReport } from './core/report';
 export { generatePanelHtml } from './core/panel';
 export { recognizeIntent, IntentResult } from './core/intent';
 export { splitCommand, SplitOptions } from './commands/split';
-export const VERSION = '0.1.1';
+export const VERSION = '0.1.2';

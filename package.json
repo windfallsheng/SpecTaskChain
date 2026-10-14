@@ -1,6 +1,6 @@
 {
   "name": "spec-taskchain",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "SpecTaskChain - 规格驱动的任务队列。Chain = 接力（relay），不是依赖（dependency）。",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

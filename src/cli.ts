@@ -13,7 +13,7 @@ import { listCommand } from './commands/list';
 import { askCommand } from './commands/ask';
 import { splitCommand } from './commands/split';
 
-const VERSION = '0.1.1';
+const VERSION = '0.1.2';
 
 function helpText(): string {
   return [
