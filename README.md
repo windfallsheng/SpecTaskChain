@@ -88,11 +88,6 @@ queue/
 
 完整协议（含跨工具续跑、无人值守与人工介入的边界）见 [docs/relay-protocol.md](docs/relay-protocol.md)。
 
-## 与 SpecCore 的关系
-
-SpecTaskChain 是独立工具，专注「规格驱动的任务队列」场景。
-原 SpecCore 的 TaskChain 功能（v8.3.307-311）已移交本项目，SpecCore 自 v8.3.312 起不再包含该功能。
-
 ## 路线图
 
 以下能力设计已定，尚未实装（v0.1.0 后陆续发布）：
