@@ -1,6 +1,6 @@
 {
   "name": "spec-taskchain",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SpecTaskChain - 规格驱动的任务队列。Chain = 接力（relay），不是依赖（dependency）。",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,7 +25,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/windfallsheng/SpecTaskChain.git"
+    "url": "git+https://github.com/windfallsheng/SpecTaskChain.git"
   },
   "engines": {
     "node": ">=16"
@@ -41,6 +41,7 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
-    "pinyin-pro": "^3.29.5"
+    "pinyin-pro": "^3.29.5",
+    "spec-taskchain": "^0.1.0"
   }
 }
