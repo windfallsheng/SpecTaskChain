@@ -30,7 +30,7 @@ export function doneCommand(cfg: TaskQConfig, opts: DoneOptions): string {
   const attempts = (prev?.attempts || 0) + 1;
   if (attempts >= MAX_ATTEMPTS) {
     markTaskState(cfg, task.id, 'failed', opts.verdict || 'fail');
-    return `${rendered}\n\n⛔ 已达尝试上限（${MAX_ATTEMPTS} 次），任务标记 failed 停止接力。修好规格/产出后：taskq run 会重新拾起（人工介入后可用 --reset 重置状态）。`;
+    return `${rendered}\n\n⛔ 已达尝试上限（${MAX_ATTEMPTS} 次），任务标记 failed 停止接力。人工介入：修好规格/产出后重试 \`taskq done ${task.id} --verdict "..."\` 重新验收；如需整单重跑，手动把 queue/.taskchain/state.json 中该任务状态改为 todo。`;
   }
   markTaskState(cfg, task.id, 'failed', opts.verdict || 'fail');
   return `${rendered}\n\n❌ 验收未通过（第 ${attempts}/${MAX_ATTEMPTS} 次尝试）。修正产出后重试：taskq done ${task.id} --verdict "..."`;

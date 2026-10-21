@@ -9,10 +9,19 @@ SpecTaskChain 把「AI 的记忆」外置为「文件系统的账本」。CLI �
 | 退出码 | 含义 | 宿主 AI 动作 |
 | :--- | :--- | :--- |
 | `10` | 有下一任务，prompt 已输出 | 执行 prompt 块内容 → `taskq done` 登记验收 → 再次 `taskq run` |
-| `12` | 拦截：draft 未补全，或模块子任务缺共享 spec（CONSTRAINTS.md 缺失/为空） | `taskq clarify --task <id>` 补全规格 / 补写模块 CONSTRAINTS.md；或 `taskq run --skip-draft` 强跑 draft |
+| `12` | 拦截（见下四情形） | 按摘要中的指引处理 |
 | `0` | 队列已清空 | 全部完成，收工 |
 
 退出码是给机器的信号——宿主 AI 的编排逻辑靠它决定「继续接力」还是「停下来处理」，不靠解析文本猜测。
+
+### 退出码 12 的四种情形
+
+| 情形 | 摘要关键词 | 处理方式 |
+| :--- | :--- | :--- |
+| draft 未补全 | 「规格标记为 draft」 | `taskq clarify --task <id>` 补全规格；或 `taskq run --skip-draft` 强跑 |
+| 模块缺共享 spec | 「CONSTRAINTS.md 缺失或为空」 | 补写模块 CONSTRAINTS.md 后再接力 |
+| 任务正在执行中 | 「正在执行中」 | 执行者完成 `taskq done` 后接力继续；执行者已中断则等 24 小时超时自动重拾（或手动把 state.json 该任务状态改为 todo） |
+| 任务失败需人工介入 | 「需人工介入」 | 检查产出与规格，修复后 `taskq done <id> --verdict "..."` 重新验收；或手动把 state.json 该任务状态改为 todo 整单重跑 |
 
 ## 执行 prompt 的四段增强（CLI 保证读到的是真的）
 
@@ -63,6 +72,14 @@ taskq done <id> --verdict "pass|fail + 评审结论"
 - 模块子任务的 prompt 恒带「模块公共约束」段——每次执行都重新读 CONSTRAINTS.md，等于每个子任务执行时重置一遍必须的提示词。
 - 验收标准写明「机器自动检查，缺了不算完」——AI 知道自己完成后有机器验，不会交半成品。
 
+## doing 占位与并发防护
+
+`taskq run` 输出 prompt 的同时，把任务状态占位为 `doing`（记录 `doingAt` 时间戳）：
+
+- 并发执行两个 `taskq run` 时，第二个进程看到 doing 任务未超时，返回 12「正在执行中」——不会重复领取同一任务。
+- 执行者中断（会话断、工具崩）后，doing 超过 24 小时视为孤儿任务，`taskq run` 自动重拾（续做语义靠 PROGRESS.md 留痕）。
+- 状态机五态（todo/doing/done/failed/draft）中 doing 是真实存在的中间态：status 面板与 report 都能看到「谁在干活」。
+
 ## 接力循环
 
 ```
@@ -92,6 +109,7 @@ taskq run     # 不需要任何交接：CLI 重新扫描全队列 + 读 state.js
 
 - **队列级不等人**：`run → done → run` 循环无人值守，做完一个接下一个。
 - **任务级可介入**：执行现场的正常交互（AI 问用户、调 skill、确认产出）完全合理——无人值守不排斥人工介入，区别只在「什么时候停下来等人」。
+- **失败需介入**：任务 failed（3 次验收不过）后，`taskq run` 返回 12 拦停接力——机器不假装能自动修复，把问题亮给用户。
 
 ## 任务里调用 skill
 

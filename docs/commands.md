@@ -23,12 +23,14 @@ taskq new <描述> [--name 目录名] [--type 类型] [--group 模块名] [--dra
 | 参数 | 说明 |
 | :--- | :--- |
 | `<描述>` | 任务目标（用户原话，写入 goal） |
-| `--name` | 任务名：英文直接作目录 slug；中文转全拼（如 迁移文档 → qianyiwendang）同时原样写入 frontmatter `name` 显示名。缺省 `task-序号` |
+| `--name` | 任务名：英文直接作目录 slug；中文转全拼（如 迁移文档 → qianyiwendang）同时原样写入 frontmatter `name` 显示名。缺省 `task-序号`（取当前最大编号 +1） |
 | `--type` | 任务类型（缺省 general，8 内置类型见 [queue-structure.md](queue-structure.md#任务类型)） |
 | `--group` | 模块名——建为模块子任务（共享 spec 的院落，自动创建 CONSTRAINTS.md 模板；模块名同样 slug 化，中文显示名记入模板标题） |
 | `--draft` | 静默落盘 draft 骨架，不请求 AI 草案 |
 
 命名机制 = 「对话成规格」的前半步：目录名是 ASCII 机器身份，显示名（`name` 字段）是人类可读身份。`taskq ask "建个叫 auth 的任务：写登录"` 也能识别创建命名（叫 X 的 / --name / --group / 放 X 模块）。
+
+同名目录/任务 ID 已存在时拒绝覆盖（不会悄悄吞掉旧任务），换个名字或先改名旧任务。
 
 不带 `--draft` 时，输出 `[TASKQ_SPEC_DRAFT]` 标记，请求宿主 AI 生成规格草案（补全 output/acceptance/正文）写回 SPEC.md。
 
@@ -44,8 +46,8 @@ taskq clarify [--task 任务ID] [--file SPEC路径] [--chain]
 | :--- | :--- |
 | `--task <id>` | 体检单个任务（写完查） |
 | `--file <path>` | 体检任意 SPEC.md 文件（未入队也行） |
-| `--chain` | 全链体检：依赖悬空 + 产出冲突（建链查） |
-| （无参数） | 全队列体检（翻车查） |
+| `--chain` | 链级体检（建链查）：依赖悬空 + 产出冲突 + 模块约束 + 命名重复 + 循环依赖——只查链执行必翻车的硬伤，不逐任务报三必填（建链前任务可能还没写完） |
+| （无参数） | 全队列体检（翻车查）：链级硬伤 + 各任务三必填全量 |
 
 ## taskq run
 
@@ -57,8 +59,8 @@ taskq run [--skip-draft]
 
 | 退出码 | 含义 | 后续动作 |
 | :--- | :--- | :--- |
-| `10` | 有下一任务，prompt 已输出 | 执行 → `taskq done` → 再 `taskq run` |
-| `12` | 下一任务是 draft | `taskq clarify` 补全，或 `--skip-draft` 强跑 |
+| `10` | 有下一任务，prompt 已输出（任务已占位 doing） | 执行 → `taskq done` → 再 `taskq run` |
+| `12` | 拦截，四种情形：下一任务是 draft / 模块缺共享 spec / 有任务正在执行中 / 任务失败需人工介入 | 按摘要指引处理 |
 | `0` | 队列已清空 | 完成 |
 
 完整协议见 [relay-protocol.md](relay-protocol.md)。
@@ -73,7 +75,7 @@ taskq done <task-id> [--verdict "pass|fail + 评审结论"]
 
 - 三态全过 → 登记 done，提示 `taskq run` 接力下一个。
 - 任一不过 → attempts +1（上限 3），修正产出后重试。
-- 达上限 → 标记 failed；`taskq run` 仍会重新拾起（修好继续）。
+- 达上限 → 标记 failed；`taskq run` 返回 `12` 拦停（修复是人工介入的活，机器不假装能自动修复）——修复产出后重新 `taskq done` 验收，或手动把 state.json 中该任务状态改为 todo 整单重跑。
 - 未找到任务 → 报错并提示 `taskq list`。
 
 ## taskq list

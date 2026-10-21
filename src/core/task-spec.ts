@@ -1,7 +1,7 @@
 // 任务规格（SPEC.md）：frontmatter 承载机器检查项（三必填），正文承载 AI 阅读项
 // 设计原则：轻而有骨——frontmatter 三必填（goal/output/acceptance），正文自由
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { join, basename } from 'path';
 
 export interface ArtifactRule {
   path: string;    // glob 风格路径（支持 * 通配）
@@ -184,11 +184,16 @@ export function readSpec(dir: string, defaultType = 'general'): TaskSpec | null 
   try {
     const content = readFileSync(specPath, 'utf-8');
     const { data, body } = parseFrontmatter(content);
-    const id = dir.split('/').pop() || dir;
+    const id = basename(dir) || dir;
     return buildSpec(id, dir, data, body, defaultType);
   } catch {
     return null;
   }
+}
+
+/** frontmatter 标量折叠：多行值折成一行（多行细节属于正文，frontmatter 只承载机器检查项） */
+function foldScalar(s: string): string {
+  return s.replace(/\s*\n+\s*/g, ' ').trim();
 }
 
 /** 生成 SPEC.md 文件内容（frontmatter + 正文） */
@@ -197,9 +202,9 @@ export function renderSpec(spec: {
 }): string {
   const lines: string[] = ['---'];
   lines.push(`type: ${spec.type || 'general'}`);
-  if (spec.name && spec.name.trim()) lines.push(`name: ${spec.name.trim()}`);
-  lines.push(`goal: ${spec.goal}`);
-  lines.push(`output: ${spec.output}`);
+  if (spec.name && spec.name.trim()) lines.push(`name: ${foldScalar(spec.name)}`);
+  lines.push(`goal: ${foldScalar(spec.goal)}`);
+  lines.push(`output: ${foldScalar(spec.output)}`);
   if (spec.dependsOn && spec.dependsOn.length) {
     lines.push('depends-on:');
     spec.dependsOn.forEach((d) => lines.push(`  - ${d}`));
@@ -217,7 +222,7 @@ export function renderSpec(spec: {
     lines.push('  checks:');
     spec.acceptance.checks.forEach((c) => lines.push(`    - ${c}`));
   }
-  lines.push(`  review: ${spec.acceptance.review || ''}`);
+  lines.push(`  review: ${foldScalar(spec.acceptance.review || '')}`);
   lines.push('---');
   lines.push('');
   lines.push(spec.body || '');

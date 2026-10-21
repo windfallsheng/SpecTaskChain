@@ -1,7 +1,7 @@
 // 澄清检测：用户自己的操作行为——随叫随到的体检，系统只提供入口、检测和报告，从不打断
 // 两级信号：确定性信号（CLI 查，零成本）+ 语义信号（词表检测，拦截高危表达）
 import { existsSync } from 'fs';
-import { isAbsolute, resolve } from 'path';
+import { isAbsolute, resolve, basename, dirname } from 'path';
 import { QueueScan } from './queue';
 import { TaskSpec, validateRequired } from './task-spec';
 import { extractReferences } from './references';
@@ -73,16 +73,17 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyI
   return issues;
 }
 
-/** 依赖悬空检查：depends-on 指向不存在的任务 */
+/** 队列全部任务（顶层 + 模块子任务） */
+function allTasks(queue: QueueScan): TaskSpec[] {
+  return [...queue.tasks, ...queue.modules.flatMap((m) => m.subtasks)];
+}
+
+/** 依赖悬空检查：depends-on 指向不存在的任务（覆盖顶层与模块子任务） */
 export function detectDanglingDeps(queue: QueueScan): ClarifyIssue[] {
   const issues: ClarifyIssue[] = [];
-  const allIds = new Set<string>();
-  for (const t of queue.tasks) allIds.add(t.id);
-  for (const m of queue.modules) {
-    allIds.add(m.id);
-    for (const s of m.subtasks) allIds.add(s.id);
-  }
-  for (const t of queue.tasks) {
+  const allIds = new Set<string>(allTasks(queue).map((t) => t.id));
+  for (const m of queue.modules) allIds.add(m.id);
+  for (const t of allTasks(queue)) {
     for (const dep of t.dependsOn) {
       if (!allIds.has(dep)) {
         issues.push({ level: 'blocking', taskId: t.id, message: `依赖悬空：depends-on 指向不存在的任务「${dep}」` });
@@ -92,11 +93,11 @@ export function detectDanglingDeps(queue: QueueScan): ClarifyIssue[] {
   return issues;
 }
 
-/** 产出路径冲突：两个任务写同一位置 */
+/** 产出路径冲突：两个任务写同一位置（覆盖顶层与模块子任务） */
 export function detectOutputConflicts(queue: QueueScan): ClarifyIssue[] {
   const issues: ClarifyIssue[] = [];
   const seen = new Map<string, string>();
-  for (const t of queue.tasks) {
+  for (const t of allTasks(queue)) {
     const out = t.output.trim();
     if (!out) continue;
     if (seen.has(out)) {
@@ -119,7 +120,7 @@ export function detectModuleIssues(queue: QueueScan): ClarifyIssue[] {
   return issues;
 }
 
-/** 命名重复检查：同层任务 slug 撞名（同名易混，清单浏览时分不清谁是谁） */
+/** 命名重复检查：同层任务 slug 撞名 + 跨层 ID 撞车（ID 是 state.json 键，跨层重复会共享状态） */
 export function detectDuplicateNames(queue: QueueScan): ClarifyIssue[] {
   const issues: ClarifyIssue[] = [];
   const check = (entries: { id: string }[], layer: string) => {
@@ -136,6 +137,44 @@ export function detectDuplicateNames(queue: QueueScan): ClarifyIssue[] {
   check(queue.tasks, '任务');
   check(queue.modules, '模块');
   for (const m of queue.modules) check(m.subtasks, `模块「${m.id}」子任务`);
+  // 跨层 ID 撞车：任务 ID = state.json 键，顶层与子任务同 ID 会共享状态
+  const topIds = new Set(queue.tasks.map((t) => t.id));
+  for (const m of queue.modules) {
+    for (const s of m.subtasks) {
+      if (topIds.has(s.id)) {
+        issues.push({ level: 'blocking', taskId: s.id, message: `任务 ID「${s.id}」与顶层任务重复——ID 是状态文件的键，跨层重复会共享状态，请改名区分` });
+      }
+    }
+  }
+  return issues;
+}
+
+/** 循环依赖检测：环不阻断执行（环成员按原序平铺），但值得排查 */
+export function detectCycles(queue: QueueScan): ClarifyIssue[] {
+  const all = allTasks(queue);
+  const byId = new Map(all.map((t) => [t.id, t]));
+  const issues: ClarifyIssue[] = [];
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const color = new Map<string, number>();
+  const dfs = (t: TaskSpec, path: string[]): void => {
+    color.set(t.id, GRAY);
+    for (const depId of t.dependsOn) {
+      const dep = byId.get(depId);
+      if (!dep) continue;
+      const c = color.get(depId) || WHITE;
+      if (c === GRAY) {
+        issues.push({ level: 'suggest', taskId: t.id, message: `检测到循环依赖：${[...path, t.id, depId].join(' → ')}——不阻断执行（环成员按原序平铺），但建议打破依赖环` });
+      } else if (c === WHITE) {
+        dfs(dep, [...path, t.id]);
+      }
+    }
+    color.set(t.id, BLACK);
+  };
+  for (const t of all) {
+    if ((color.get(t.id) || WHITE) === WHITE) dfs(t, []);
+  }
   return issues;
 }
 
@@ -159,4 +198,25 @@ export function renderClarifyReport(issues: ClarifyIssue[]): string {
   section('待定', pending, '⏳');
   lines.push('处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）');
   return lines.join('\n');
+}
+
+/** 链级体检（--chain 与无参数共用）：只查链执行必翻车的硬伤（依赖悬空/产出冲突/模块约束/命名重复/循环依赖） */
+export function detectChainIssues(queue: QueueScan): ClarifyIssue[] {
+  return [
+    ...detectDanglingDeps(queue),
+    ...detectOutputConflicts(queue),
+    ...detectModuleIssues(queue),
+    ...detectDuplicateNames(queue),
+    ...detectCycles(queue),
+  ];
+}
+
+/** 任务 ID 提取（跨平台）：路径末段即目录名（宿主 AI 消解「上面」后传入的就是这里） */
+export function taskIdFromPath(file: string): string | null {
+  const base = basename(file);
+  if (base === 'SPEC.md') {
+    const parent = basename(dirname(file));
+    return parent ? parent : null;
+  }
+  return base; // 指向任务目录本身
 }

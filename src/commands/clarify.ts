@@ -1,5 +1,5 @@
 // taskq clarify：随叫随到的体检——用户自己的操作行为，系统只提供入口、检测和报告，从不打断
-// 四入口：写完查（--task/--file）/ 建链前查（无参数整队查）/ 翻车时查（--task 重跑）/ 随口查（taskq ask 路由）
+// 四入口：写完查（--task/--file）/ 建链前查（--chain 链级体检）/ 翻车时查（无参数整队查）/ 随口查（taskq ask 路由）
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TaskQConfig } from '../core/config';
@@ -7,28 +7,16 @@ import { scanQueue } from '../core/queue';
 import { readSpec, parseFrontmatter, buildSpec } from '../core/task-spec';
 import {
   detectTaskIssues,
-  detectDanglingDeps,
-  detectOutputConflicts,
-  detectModuleIssues,
-  detectDuplicateNames,
+  detectChainIssues,
   renderClarifyReport,
+  taskIdFromPath,
   ClarifyIssue,
 } from '../core/clarify';
 
 export interface ClarifyOptions {
   taskId?: string;  // 单任务（按 ID）
   file?: string;    // 直接指文件（手动写场景：宿主 AI 消解「上面的内容」后传入）
-  chain?: boolean;  // 建链前查：整队体检（依赖悬空 + 产出冲突 + 模块公共约束 + 各任务三必填）
-}
-
-/** 从文件路径找任务 ID（宿主 AI 消解「上面」后传入的就是这里） */
-function taskIdFromFile(file: string): string | null {
-  const parts = file.split('/');
-  const idx = parts.lastIndexOf('SPEC.md');
-  if (idx > 0) return parts[idx - 1];
-  // 指向任务目录的情况
-  if (parts[parts.length - 1] !== 'SPEC.md') return parts[parts.length - 1];
-  return null;
+  chain?: boolean;  // 建链前查：只查链级硬伤（依赖悬空/产出冲突/模块约束/命名重复/循环依赖），不逐任务三必填
 }
 
 export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
@@ -43,7 +31,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     }
     const content = readFileSync(resolved, 'utf-8');
     const { data, body } = parseFrontmatter(content);
-    const id = taskIdFromFile(resolved) || '此文件';
+    const id = taskIdFromPath(resolved) || '此文件';
     const spec = buildSpec(id, resolved, data, body, 'general');
     issues = detectTaskIssues(spec, cfg.projectRoot);
     return renderClarifyReport(issues);
@@ -60,20 +48,19 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     return renderClarifyReport(issues);
   }
 
-  // 建链前查（无参数）：整队体检——只查链执行必翻车的硬伤（依赖/产出冲突/模块公共约束/各任务三必填/命名重复）
-  issues = [
-    ...detectDanglingDeps(queue),
-    ...detectOutputConflicts(queue),
-    ...detectModuleIssues(queue),
-    ...detectDuplicateNames(queue),
-  ];
+  if (opts.chain) {
+    // 建链前查：只查链级硬伤（建链前逐任务可能还没写完，不报三必填）
+    return renderClarifyReport(detectChainIssues(queue));
+  }
+
+  // 翻车查（无参数）：链级硬伤 + 各任务三必填全量体检
+  issues = [...detectChainIssues(queue)];
   for (const t of queue.tasks) issues.push(...detectTaskIssues(t, cfg.projectRoot));
   for (const m of queue.modules) {
     for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot));
   }
-  const report = renderClarifyReport(issues);
   if (!queue.tasks.length && !queue.modules.length) {
     return '队列还是空的。先建任务：taskq new "任务描述"';
   }
-  return report;
+  return renderClarifyReport(issues);
 }

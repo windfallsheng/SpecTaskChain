@@ -1,5 +1,5 @@
 // 项目配置：定位队列目录与 .taskchain 元数据
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, copyFileSync } from 'fs';
 import { join } from 'path';
 
 export interface TaskQConfig {
@@ -33,18 +33,30 @@ export function readState(cfg: TaskQConfig): Record<string, TaskRunState> {
     const raw = JSON.parse(readFileSync(statePath, 'utf-8'));
     return raw.tasks || {};
   } catch {
+    // 账本损坏不静默：备份原文件 + stderr 告警，按空状态继续（重跑比丢账更诚实）
+    try {
+      copyFileSync(statePath, `${statePath}.bak`);
+    } catch {
+      // 备份失败不阻断
+    }
+    process.stderr.write(`⚠️ 状态文件损坏（${statePath}），已备份为 state.json.bak 并按空状态处理——已完成任务需重新接力\n`);
     return {};
   }
 }
 
-/** 写状态文件（幂等落盘） */
+/** 写状态文件（原子落盘：临时文件 + rename 替换，写入中途崩溃不截断账本） */
 export function writeState(cfg: TaskQConfig, tasks: Record<string, TaskRunState>): void {
-  writeFileSync(join(cfg.metaDir, 'state.json'), JSON.stringify({ version: 1, tasks }, null, 2), 'utf-8');
+  const statePath = join(cfg.metaDir, 'state.json');
+  mkdirSync(cfg.metaDir, { recursive: true });
+  const tmpPath = `${statePath}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify({ version: 1, tasks }, null, 2), 'utf-8');
+  renameSync(tmpPath, statePath);
 }
 
 export interface TaskRunState {
   status: 'todo' | 'doing' | 'done' | 'failed' | 'draft';
   attempts: number;
   doneAt?: string;
+  doingAt?: string; // doing 占位时间（超时视为孤儿任务，允许重拾）
   verdict?: string; // 验收结论（pass/fail/描述）
 }

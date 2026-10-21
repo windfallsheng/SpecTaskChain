@@ -1,8 +1,9 @@
 // 队列报告：执行留痕，队列跑完「有账可查、可复盘、可追责」
-import { writeFileSync } from 'fs';
-import { join } from 'path';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 import { TaskQConfig, readState } from './config';
 import { scanQueue, buildExecutionSequence } from './queue';
+import { verdictPassed } from './acceptance';
 
 export function generateQueueReport(cfg: TaskQConfig): string {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
@@ -18,7 +19,7 @@ export function generateQueueReport(cfg: TaskQConfig): string {
   const failed = sequence.filter((e) => state[e.spec.id]?.status === 'failed');
   const pending = sequence.filter((e) => !state[e.spec.id] || ['todo', 'doing', 'draft'].includes(state[e.spec.id].status));
   lines.push(`- 完成：${done.length} / 失败：${failed.length} / 未完成：${pending.length}`);
-  lines.push(`- 验收通过率：${done.length ? (done.filter((e) => !state[e.spec.id]?.verdict || /pass|通过/.test(state[e.spec.id].verdict!)).length / done.length * 100).toFixed(0) : 0}%（按登记结论）`);
+  lines.push(`- 验收通过率：${done.length ? (done.filter((e) => verdictPassed(state[e.spec.id]?.verdict)).length / done.length * 100).toFixed(0) : 0}%（按登记结论）`);
   lines.push('');
   lines.push('## 执行记录');
   lines.push('');
@@ -50,6 +51,9 @@ export function generateQueueReport(cfg: TaskQConfig): string {
     lines.push('');
   }
   const report = lines.join('\n');
-  writeFileSync(join(cfg.queueDir, 'QUEUE_REPORT.md'), report, 'utf-8');
+  // 未 init 也兜底：自动补目录，不裸奔
+  const reportPath = join(cfg.queueDir, 'QUEUE_REPORT.md');
+  mkdirSync(dirname(reportPath), { recursive: true });
+  writeFileSync(reportPath, report, 'utf-8');
   return report;
 }

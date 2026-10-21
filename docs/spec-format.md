@@ -26,7 +26,7 @@
 ```yaml
 acceptance:
   artifacts:          # 产物门禁：文件存在且非空（机器可查）
-    - path: docs/migration-*.md     # glob 风格，* 不跨目录
+    - path: docs/migration-*.md     # glob 风格，* 可出现在任意路径段（不跨目录段）
       min: 3                        # 最少命中数（缺省 1）
   checks:             # 断言门禁：shell 命令退出码 0（机器可查）
     - grep -q '订单表' docs/migration-order.md
@@ -69,10 +69,10 @@ acceptance:
 
 任务目录内可放 `PROGRESS.md`：执行时每完成一个阶段更新一句（做到了哪、在等什么）。断点续跑时全文注入 prompt，提示「按留痕续做，不要从头重做」——跨会话、跨工具续跑都靠它接上。
 
-## draft 语义
+## draft 语义与退出码 12
 
 - `draft: true`：规格未补全。`taskq run` 返回退出码 `12` 拦截，提示先 clarify；`--skip-draft` 强跑。
-- 退出码 `12` 的另一种情况：模块子任务缺共享 spec（CONSTRAINTS.md 缺失/为空）——先补写模块约束再接力。
+- 退出码 `12` 共四种情形：① 下一任务是 draft；② 模块子任务缺共享 spec（CONSTRAINTS.md 缺失/为空）；③ 有任务正在执行中（doing 占位，未超时）；④ 任务失败需人工介入（attempts 达上限）。
 - `taskq new` 建的任务恒定 `draft: true` 起步——补全规格（clarify 通过）后把 `draft: true` 删掉即可放行。
 
 ## 解析器边界
@@ -83,3 +83,5 @@ acceptance:
 - 顶层值、列表项值支持 `"..."` / `'...'` 引号（自动剥离）。
 - 顶层 `key: [a, b]` 内联数组会解析为列表。
 - 解析失败的任务会被静默跳过（不会报错，`taskq list` 里看不到它——体检靠 clarify 的 --file 入口）。
+
+> 生成侧（AI 写回规格草案 / `taskq new` 落盘）：goal / name / review 等多行值自动折叠为单行——frontmatter 只承载机器检查项，多行细节属于正文。

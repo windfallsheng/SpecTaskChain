@@ -24,13 +24,23 @@ function displayName(raw: string, slug: string): string | undefined {
   return undefined;
 }
 
+/** 下一序号：取现有目录编号最大值 +1（删除过中间任务也不会复用旧号覆盖） */
+function nextSeq(nums: number[]): string {
+  return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0');
+}
+
+/** 目录编号提取：目录名前缀数字（01-auth → 1），非数字目录忽略 */
+function dirNums(dirs: string[]): number[] {
+  return dirs.map((d) => parseInt(d.split('-')[0], 10)).filter((n) => !isNaN(n));
+}
+
 export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   const tasksDir = join(cfg.queueDir, 'tasks');
   mkdirSync(tasksDir, { recursive: true });
   const { readdirSync, statSync, existsSync } = require('fs');
   const existing = readdirSync(tasksDir).filter((e: string) => statSync(join(tasksDir, e)).isDirectory());
   const typeDef = resolveTaskType(cfg.metaDir, opts.type || 'general');
-  const seq = String(existing.length + 1).padStart(2, '0');
+  const seq = nextSeq(dirNums(existing));
   const slug = opts.name ? toSlug(opts.name) : `task-${seq}`;
   const id = `${seq}-${slug}`;
   const shownName = opts.name ? displayName(opts.name, slug) : undefined;
@@ -49,8 +59,12 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
         'utf-8'
       );
     }
-    const subId = String(readdirSync(modDir).filter((s: string) => statSync(join(modDir, s)).isDirectory()).length + 1).padStart(2, '0');
+    const subs = readdirSync(modDir).filter((s: string) => statSync(join(modDir, s)).isDirectory());
+    const subId = nextSeq(dirNums(subs));
     const subDir = join(modDir, `${subId}-${slug}`);
+    if (existsSync(subDir)) {
+      return `❌ 子任务目录「${groupSlug}/${subId}-${slug}」已存在（名称撞车）。换一个 --name，或先处理现有子任务目录。`;
+    }
     mkdirSync(subDir, { recursive: true });
     writeFileSync(
       join(subDir, 'SPEC.md'),
@@ -81,6 +95,9 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   }
 
   const taskDir = join(tasksDir, id);
+  if (existsSync(taskDir)) {
+    return `❌ 任务目录「${id}」已存在（名称撞车）。换一个 --name，或先处理现有任务目录。`;
+  }
   mkdirSync(taskDir, { recursive: true });
   writeFileSync(
     join(taskDir, 'SPEC.md'),

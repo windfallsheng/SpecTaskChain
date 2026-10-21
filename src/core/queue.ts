@@ -9,7 +9,7 @@ export interface ModuleInfo {
   id: string;               // 模块 ID
   constraintsPath: string;  // 公共约束文件（00-specs 的等价物：CONSTRAINTS.md）
   constraints: string;      // 约束内容（每次执行子任务前重读）
-  constraintsMissing: boolean; // CONSTRAINTS.md 缺失或为空——子任务执行时阻塞（共享 spec 是必读前提）
+  constraintsMissing: boolean; // CONSTRAINTS.md 缺失或为空——子任务执行会被阻塞，绝不静默裸奔
   subtasks: TaskSpec[];     // 第三层子任务
 }
 
@@ -59,7 +59,8 @@ export function scanQueue(queueDir: string, metaDir: string): QueueScan {
 
 /**
  * 展开为执行序列：顶层任务 + 模块子任务（模块子任务挂模块约束）
- * 拓扑排序：只对声明 depends-on 的任务排序，其余按目录序平铺（多数任务无依赖）
+ * 拓扑排序（Kahn）：只对声明 depends-on 的任务排序，其余按目录序平铺（多数任务无依赖）
+ * 循环依赖不阻断执行：环成员按原目录序稳定附加，非环成员保证依赖在前
  */
 export interface ExecutableTask {
   spec: TaskSpec;
@@ -74,62 +75,57 @@ export function buildExecutionSequence(queue: QueueScan): ExecutableTask[] {
   for (const m of queue.modules) {
     for (const sub of m.subtasks) flat.push({ spec: sub, module: m, seq: seq++ });
   }
-  // 依赖拓扑：depends-on 声明的任务必须排在依赖之后（少数情况）
   const byId = new Map(flat.map((e) => [e.spec.id, e]));
+  // 有效依赖边：只保留指向队列内任务的声明（悬空依赖由 clarify 报阻塞，这里忽略）
+  const edges = new Map<ExecutableTask, ExecutableTask[]>();
+  const indeg = new Map<ExecutableTask, number>();
+  for (const e of flat) {
+    const deps = e.spec.dependsOn.map((d) => byId.get(d)).filter((d): d is ExecutableTask => !!d);
+    edges.set(e, deps);
+    indeg.set(e, deps.length);
+  }
+  // Kahn 拓扑：入度 0 的按 seq 序出队，消解依赖边；环成员入度消不掉，按原 seq 稳定附加
+  const ready: ExecutableTask[] = flat.filter((e) => (indeg.get(e) || 0) === 0);
+  ready.sort((a, b) => a.seq - b.seq);
+  const indegLeft = new Map(indeg);
   const sorted: ExecutableTask[] = [];
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-  const visit = (e: ExecutableTask, chain: string[]): boolean => {
-    if (visited.has(e.spec.id)) return true;
-    if (visiting.has(e.spec.id)) return false; // 循环依赖
-    visiting.add(e.spec.id);
-    for (const depId of e.spec.dependsOn) {
-      const dep = byId.get(depId);
-      if (dep && !visit(dep, [...chain, e.spec.id])) return false;
-    }
-    visiting.delete(e.spec.id);
-    visited.add(e.spec.id);
+  while (ready.length) {
+    const e = ready.shift()!;
     sorted.push(e);
-    return true;
-  };
-  for (const e of flat) {
-    if (!visit(e, [])) {
-      // 循环依赖：按原序平铺，不阻断执行
+    for (const dep of edges.get(e)!) {
+      const d = (indegLeft.get(dep) || 0) - 1;
+      indegLeft.set(dep, d);
+      if (d === 0) {
+        ready.push(dep);
+        ready.sort((a, b) => a.seq - b.seq);
+      }
     }
   }
-  // 无依赖任务按 seq 补入（保持目录序）
-  for (const e of flat) {
-    if (!sorted.includes(e)) sorted.push(e);
+  if (sorted.length < flat.length) {
+    // 循环依赖：环成员不参与依赖排序，按原目录序平铺（不阻断执行）
+    const rest = flat.filter((e) => !sorted.includes(e)).sort((a, b) => a.seq - b.seq);
+    sorted.push(...rest);
   }
-  // 排序结果里无依赖任务保持目录序：按依赖深度分组，组内保持 seq
-  sorted.sort((a, b) => {
-    const depthOf = (e: ExecutableTask): number => {
-      let d = 0;
-      let cur: ExecutableTask | undefined = e;
-      const seen = new Set<string>();
-      while (cur && cur.spec.dependsOn.length && !seen.has(cur.spec.id)) {
-        seen.add(cur.spec.id);
-        d++;
-        const nextId: string = cur.spec.dependsOn[0];
-        cur = flat.find((x) => x.spec.id === nextId);
-      }
-      return d;
-    };
-    const da = depthOf(a);
-    const db = depthOf(b);
-    if (da !== db) return da - db;
-    return a.seq - b.seq;
-  });
   return sorted;
 }
+
+/** doing 占位超过该时长视为孤儿任务（执行者已中断），允许重拾 */
+export const DOING_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 /** 找第一个未完成任务（接力推进：断点续跑的关键） */
 export function findNextPending(
   sequence: ExecutableTask[],
-  state: Record<string, { status: string }>
+  state: Record<string, { status: string; doingAt?: string }>
 ): ExecutableTask | null {
   return sequence.find((e) => {
     const s = state[e.spec.id];
-    return !s || s.status === 'todo' || s.status === 'draft' || s.status === 'failed';
+    if (!s) return true;
+    if (s.status === 'todo' || s.status === 'draft' || s.status === 'failed') return true;
+    if (s.status === 'doing') {
+      // 孤儿 doing：领取超时视为执行者已中断，重拾；未超时视为有活跃执行者，跳过
+      const at = s.doingAt ? new Date(s.doingAt).getTime() : 0;
+      return Date.now() - at > DOING_TIMEOUT_MS;
+    }
+    return false;
   }) || null;
 }

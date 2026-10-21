@@ -1,8 +1,13 @@
 // HTML 可视化面板：单文件，打开即看——队列总览、进度条、状态矩阵
-import { writeFileSync } from 'fs';
-import { join } from 'path';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 import { TaskQConfig, readState } from './config';
 import { scanQueue, buildExecutionSequence } from './queue';
+
+/** HTML 转义：任务描述来自规格（内容不受控），面板打开不执行注入内容 */
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
 
 export function generatePanelHtml(cfg: TaskQConfig): string {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
@@ -15,11 +20,11 @@ export function generatePanelHtml(cfg: TaskQConfig): string {
     const status = s?.status || 'todo';
     const color = status === 'done' ? '#22c55e' : status === 'failed' ? '#ef4444' : status === 'doing' ? '#3b82f6' : '#94a3b8';
     const icon = status === 'done' ? '✅' : status === 'failed' ? '⛔' : status === 'doing' ? '▶' : '⏳';
-    return `<tr><td>${icon}</td><td>${e.spec.id}</td><td>${e.spec.type}</td><td style="color:${color};font-weight:600">${status}</td><td>${s?.attempts || 0}</td><td>${e.spec.goal.slice(0, 40)}</td></tr>`;
+    return `<tr><td>${icon}</td><td>${esc(e.spec.id)}</td><td>${esc(e.spec.type)}</td><td style="color:${color};font-weight:600">${esc(status)}</td><td>${s?.attempts || 0}</td><td>${esc(e.spec.goal.slice(0, 40))}</td></tr>`;
   }).join('');
   const moduleBlocks = queue.modules.map((m) => {
     const doneSubs = m.subtasks.filter((s) => state[s.id]?.status === 'done').length;
-    return `<div class="mod"><b>${m.id}</b>（共享约束 ${m.constraints.trim() ? '已挂' : '未挂'}）子任务 ${doneSubs}/${m.subtasks.length} 完成</div>`;
+    return `<div class="mod"><b>${esc(m.id)}</b>（共享约束 ${m.constraints.trim() ? '已挂' : '未挂'}）子任务 ${doneSubs}/${m.subtasks.length} 完成</div>`;
   }).join('');
   const html = `<!DOCTYPE html>
 <html lang="zh">
@@ -43,7 +48,7 @@ h2{margin-top:28px;font-size:18px}
 </head>
 <body>
 <h1>📋 SpecTaskChain 队列面板</h1>
-<div class="sub">队列：${cfg.queueDir} · 生成于 ${new Date().toLocaleString('zh-CN')}</div>
+<div class="sub">队列：${esc(cfg.queueDir)} · 生成于 ${new Date().toLocaleString('zh-CN')}</div>
 <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
 <div class="pct">${doneCount} / ${sequence.length} 完成（${pct}%）</div>
 ${moduleBlocks ? `<h2>任务模块</h2>${moduleBlocks}` : ''}
@@ -54,6 +59,9 @@ ${moduleBlocks ? `<h2>任务模块</h2>${moduleBlocks}` : ''}
 </table>
 </body>
 </html>`;
-  writeFileSync(join(cfg.queueDir, 'PANEL.html'), html, 'utf-8');
-  return join(cfg.queueDir, 'PANEL.html');
+  // 未 init 也兜底：自动补目录，不裸奔
+  const panelPath = join(cfg.queueDir, 'PANEL.html');
+  mkdirSync(dirname(panelPath), { recursive: true });
+  writeFileSync(panelPath, html, 'utf-8');
+  return panelPath;
 }

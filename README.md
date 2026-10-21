@@ -84,18 +84,17 @@ queue/
 
 - `0`：队列已清空，全部完成
 - `10`：有下一任务——执行 prompt 块内容 → `taskq done` 登记验收 → 再次 `taskq run`
-- `12`：下一任务是 draft（规格未补全）——先 `taskq clarify` 补全，或 `--skip-draft` 强跑
+- `12`：拦截——四种情形：下一任务是 draft（先 clarify 补全或 `--skip-draft` 强跑）/ 模块缺共享 spec（先补 CONSTRAINTS.md）/ 有任务正在执行中（doing 占位，执行者完成后 done）/ 任务失败需人工介入（修复后重新 `taskq done` 验收）
 
 完整协议（含跨工具续跑、无人值守与人工介入的边界）见 [docs/relay-protocol.md](docs/relay-protocol.md)。
 
-## 路线图
-
-以下能力设计已定，尚未实装（v0.1.0 后陆续发布）：
+## 能力清单（v0.1.0 已全部实装）
 
 - `taskq split`：从一份文档拆分出任务草案（拆 → 确认 → 逐个完善）
 - 引用消解：SPEC 中引用的文件/图片/链接由 CLI 读取真实内容嵌入 prompt
 - 模块约束加固：CONSTRAINTS.md 缺失即阻塞，绝不静默裸奔
 - 执行留痕：PROGRESS.md 承载步骤级进度，断点恢复到 skill 步骤边界
+- 动作义务：执行 prompt 钉死「动作型要求是任务的一部分，必须执行」
 
 ## License
 

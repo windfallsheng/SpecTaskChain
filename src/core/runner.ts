@@ -14,7 +14,7 @@ export const MAX_ATTEMPTS = 3;
 export interface NextTaskInfo {
   task: ExecutableTask;
   prompt: string;      // 交给宿主 AI 的完整 prompt
-  exitCode: number;    // 10 = 有下一任务（宿主 AI 接力），12 = 拦截（draft 未补全 / 模块缺共享 spec），0 = 队列已空
+  exitCode: number;    // 10 = 有下一任务（宿主 AI 接力），12 = 拦截（draft / 模块缺共享 spec / doing 进行中 / failed 需人工介入），0 = 队列已空
   summary: string;     // 状态摘要
 }
 
@@ -146,9 +146,11 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
 /**
  * 接力推进：找第一个未完成任务，输出其 prompt
  * - 队列空 → exitCode 0
- * - 有下一任务 → 输出 [TASKQ_PROMPT] 块，exitCode 10（宿主 AI 接力）
+ * - 有下一任务 → 占位 doing + 输出 [TASKQ_PROMPT] 块，exitCode 10（宿主 AI 接力）
  * - draft 任务 → 提示先 clarify（可 --skip-draft 强跑）
  * - 模块子任务但共享 spec 缺失/为空 → 阻塞（宁可停，不可裸奔）
+ * - failed 任务 → 需人工介入（协议拦截，不无限重试）
+ * - 有 doing 任务未完成（未超时）→ 有执行者在干活，不重复领取
  */
 export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean } = {}): NextTaskInfo {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
@@ -156,9 +158,28 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean } = {}):
   const state = readState(cfg);
   const next = findNextPending(sequence, state);
   if (!next) {
+    // 没有可领取的任务：区分「队列已清空」与「有任务正在执行中」
+    const doing = sequence.find((e) => state[e.spec.id]?.status === 'doing');
+    if (doing) {
+      const at = state[doing.spec.id].doingAt || '未知时间';
+      return {
+        task: null as any,
+        prompt: '',
+        exitCode: 12,
+        summary: `⏳ 任务「${doing.spec.id}」正在执行中（${at} 领取）。执行者完成后会调 taskq done 登记；若执行者已中断，超过 24 小时自动重拾（或手动把 queue/.taskchain/state.json 中该任务状态改为 todo）`,
+      };
+    }
     return { task: null as any, prompt: '', exitCode: 0, summary: `✅ 队列已清空：${sequence.length} 个任务全部完成` };
   }
   const st = state[next.spec.id] || { status: 'todo', attempts: 0 };
+  if (st.status === 'failed') {
+    return {
+      task: next,
+      prompt: '',
+      exitCode: 12,
+      summary: `⛔ 任务「${next.spec.id}」已失败 ${st.attempts} 次（达尝试上限）——需人工介入：检查产出与规格，修复后运行 \`taskq done ${next.spec.id} --verdict "..."\` 重新验收；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`,
+    };
+  }
   if (next.module && next.module.constraintsMissing) {
     return {
       task: next,
@@ -176,6 +197,8 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean } = {}):
     };
   }
   const prompt = buildTaskPrompt(next, cfg.metaDir, cfg.projectRoot);
+  // 占位 doing：防并发重复领取，status 面板与报告有真数据（doingAt 超时后自动重拾）
+  markTaskState(cfg, next.spec.id, 'doing');
   return {
     task: next,
     prompt,
@@ -184,14 +207,16 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean } = {}):
   };
 }
 
-/** 登记任务状态（done 命令写入；attempts 达上限标记 failed 停止接力） */
+/** 登记任务状态（done 命令写入；attempts = 失败次数，failed 时 +1） */
 export function markTaskState(cfg: TaskQConfig, taskId: string, status: 'doing' | 'done' | 'failed', verdict?: string): void {
   const state = readState(cfg);
   const prev = state[taskId] || { status: 'todo', attempts: 0 };
+  const now = new Date().toISOString();
   state[taskId] = {
     status,
-    attempts: prev.attempts + (status === 'failed' || status === 'doing' ? 1 : 0),
-    doneAt: status === 'done' ? new Date().toISOString() : prev.doneAt,
+    attempts: prev.attempts + (status === 'failed' ? 1 : 0),
+    doneAt: status === 'done' ? now : prev.doneAt,
+    doingAt: status === 'doing' ? now : prev.doingAt,
     verdict: verdict || prev.verdict,
   };
   writeState(cfg, state);
