@@ -20,7 +20,7 @@ const MAX_CONSTRAINTS_CHARS = 8000; // 模块约束截断上限
 /** 防爆截断：超长时 tail 取尾部（进度类，最新在尾），否则取头部（正文/约束类）；标注省略量与原文路径 */
 function guardLong(text: string, max: number, tail: boolean, sourcePath?: string): string {
   if (text.length <= max) return text;
-  const hint = sourcePath ? `（如需完整内容请 Read 原文：${sourcePath}）` : '';
+  const hint = sourcePath ? `（如需完整内容请 Read 原文：${sourcePath}；大文件分段 Read、读完一段处理一段）` : '';
   if (tail) {
     return `…（前文省略 ${text.length - max} 字符）\n${text.slice(-max)}`;
   }

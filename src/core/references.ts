@@ -118,7 +118,7 @@ export function resolveReferences(text: string, baseDir: string): ResolvedRefere
       r = {
         ...r,
         content: undefined,
-        note: `内容略过（已达引用注入预算：最多 ${MAX_REF_CONTENT} 个 / 总量 ${MAX_REF_TOTAL} 字符），按需 Read：${path}`,
+        note: `内容略过（已达引用注入预算：最多 ${MAX_REF_CONTENT} 个 / 总量 ${MAX_REF_TOTAL} 字符），按需 Read：${path}；大文件分段 Read、读完一段处理一段`,
       };
     } else if (r.content) {
       total += r.content.length;
