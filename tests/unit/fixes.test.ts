@@ -11,6 +11,8 @@ import { scanQueue, buildExecutionSequence, findNextPending, DOING_TIMEOUT_MS } 
 import { detectCycles, detectDuplicateNames, taskIdFromPath } from '../../src/core/clarify';
 import { renderSpec, parseFrontmatter, buildSpec } from '../../src/core/task-spec';
 import { generatePanelHtml } from '../../src/core/panel';
+import { readVersion } from '../../src/core/version';
+import { initCommand } from '../../src/commands/init';
 
 /** 造一个干净的临时队列配置 */
 function makeCfg(): TaskQConfig {
@@ -267,5 +269,25 @@ describe('面板：HTML 转义防注入', () => {
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;');
     expect(html).toContain('&quot;引号&quot;');
+  });
+});
+
+describe('版本事实源与 init 工具参数', () => {
+  it('readVersion 与 package.json 一致（唯一事实源）', () => {
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8'));
+    expect(readVersion()).toBe(pkg.version);
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it('initCommand 带 --tools 不静默吞参数，输出工具无关说明', () => {
+    const out = initCommand(makeCfg().projectRoot, { tools: 'qoder' });
+    expect(out).toContain('--tools qoder');
+    expect(out).toContain('工具无关');
+  });
+
+  it('initCommand 不带 --tools 不出现该说明（原输出不受影响）', () => {
+    const out = initCommand(makeCfg().projectRoot);
+    expect(out).not.toContain('工具无关');
+    expect(out).toContain('Chain = 接力（relay），不是依赖（dependency）。');
   });
 });

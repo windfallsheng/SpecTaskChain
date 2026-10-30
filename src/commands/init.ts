@@ -1,7 +1,7 @@
 // taskq init：初始化队列骨架（幂等）
 import { resolveConfig, ensureStructure } from '../core/config';
 
-export function initCommand(cwd: string): string {
+export function initCommand(cwd: string, opts: { tools?: string } = {}): string {
   const cfg = resolveConfig(cwd);
   ensureStructure(cfg);
   const lines = [
@@ -19,5 +19,12 @@ export function initCommand(cwd: string): string {
     '',
     'Chain = 接力（relay），不是依赖（dependency）。',
   ];
+  // --tools 参数回应：不静默吞参数，明确工具无关的设计
+  if (opts.tools) {
+    lines.push(
+      '',
+      `  已收到 --tools ${opts.tools}：SpecTaskChain 与宿主工具无关——账本在文件里，任何 AI 工具（Qoder/Claude/Codex/…）读同一个队列都能接力，无需按工具初始化。`
+    );
+  }
   return lines.join('\n');
 }

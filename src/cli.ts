@@ -1,6 +1,7 @@
 // SpecTaskChain CLI：规格驱动的任务队列
 // Chain = 接力（relay），不是依赖（dependency）——队列是第一公民，无人值守接力完成
 import { resolveConfig, ensureStructure } from './core/config';
+import { readVersion } from './core/version';
 import { relayNext } from './core/runner';
 import { initCommand } from './commands/init';
 import { newCommand } from './commands/new';
@@ -13,7 +14,7 @@ import { listCommand } from './commands/list';
 import { askCommand } from './commands/ask';
 import { splitCommand } from './commands/split';
 
-const VERSION = '0.1.2';
+const VERSION = readVersion();
 
 function helpText(): string {
   return [
@@ -55,7 +56,7 @@ function main(): void {
   try {
     switch (cmd) {
       case 'init':
-        output = initCommand(cwd);
+        output = initCommand(cwd, { tools: flag('--tools') });
         break;
       case 'new': {
         const goal = rest.filter((a) => !a.startsWith('--') && !['--name', '--type', '--group'].includes(a) && (rest.indexOf(a) === 0 || !rest[rest.indexOf(a) - 1].startsWith('--'))).join(' ');
