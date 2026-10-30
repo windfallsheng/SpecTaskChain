@@ -106,7 +106,7 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
       if (r.kind === 'file') {
         lines.push(`### 文件：${r.target}`);
         lines.push('');
-        lines.push(r.content || '');
+        lines.push(r.content || `（${r.note || `请 Read 原文：${r.absPath}`}）`);
         lines.push('');
       } else if (r.kind === 'image') {
         lines.push(`### 图片：${r.target}（真实存在：${r.absPath}）`);
@@ -116,7 +116,7 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
       } else {
         lines.push(`### 外部链接：${r.target}（CLI 已抓取内容）`);
         lines.push('');
-        lines.push(r.content || '');
+        lines.push(r.content || `（${r.note || '抓取失败'}）`);
         lines.push('');
       }
     }

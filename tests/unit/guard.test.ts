@@ -7,6 +7,7 @@ import { TaskQConfig } from '../../src/core/config';
 import { scanQueue, buildExecutionSequence } from '../../src/core/queue';
 import { buildTaskPrompt } from '../../src/core/runner';
 import { splitCommand } from '../../src/commands/split';
+import { resolveReferences } from '../../src/core/references';
 
 function makeCfg(): TaskQConfig {
   const root = mkdtempSync(join(tmpdir(), 'stc-guard-'));
@@ -99,6 +100,41 @@ describe('上下文防爆（截断 + 亮明原文路径）', () => {
     expect(prompt).toContain('短留痕');
     expect(prompt).not.toContain('已截断');
     expect(prompt).not.toContain('前文省略');
+  });
+});
+
+describe('引用注入聚合限额（对齐 speccore：单文件 + 总量双层）', () => {
+  it('超过 6 个引用：第 7 个起内容略过，只亮路径供按需 Read', () => {
+    const cfg = makeCfg();
+    const refs = Array.from({ length: 7 }, (_, i) => `ref-${i}.md`);
+    refs.forEach((f) => writeFileSync(join(cfg.projectRoot, f), `内容 ${f}`, 'utf-8'));
+    const resolved = resolveReferences(refs.map((f) => `[${f}](${f})`).join('\n'), cfg.projectRoot);
+    expect(resolved).toHaveLength(7);
+    expect(resolved.filter((r) => r.content)).toHaveLength(6);
+    const last = resolved[6];
+    expect(last.content).toBeUndefined();
+    expect(last.note).toContain('按需 Read');
+    expect(last.note).toContain('ref-6.md');
+  });
+
+  it('总量超 20000 字符：三件 8K 文件只注入前两件', () => {
+    const cfg = makeCfg();
+    const body = '乙'.repeat(8192);
+    ['c.md', 'd.md', 'e.md'].forEach((f) => writeFileSync(join(cfg.projectRoot, f), body, 'utf-8'));
+    const resolved = resolveReferences('[c](c.md)\n[d](d.md)\n[e](e.md)', cfg.projectRoot);
+    expect(resolved[0].content).toBeTruthy();
+    expect(resolved[1].content).toBeTruthy();
+    expect(resolved[2].content).toBeUndefined();
+    expect(resolved[2].note).toContain('按需 Read');
+  });
+
+  it('预算外引用进 prompt：渲染 note 而非空段', () => {
+    const cfg = makeCfg();
+    const refs = Array.from({ length: 7 }, (_, i) => `x-${i}.md`);
+    refs.forEach((f) => writeFileSync(join(cfg.projectRoot, f), `内容`, 'utf-8'));
+    const dir = makeTask(cfg, '05-refs', refs.map((f) => `[${f}](${f})`).join('\n'));
+    const prompt = buildTaskPrompt(findExec(cfg, '05-refs'), cfg.metaDir, cfg.projectRoot);
+    expect(prompt).toContain('内容略过（已达引用注入预算');
   });
 });
 

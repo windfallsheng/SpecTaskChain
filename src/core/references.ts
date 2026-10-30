@@ -12,8 +12,9 @@ export interface Reference {
 
 export interface ResolvedReference extends Reference {
   status: 'ok' | 'missing' | 'fetch-failed';
-  content?: string; // 文件全文（≤16KB）/ 抓取内容（≤4000 字符）
+  content?: string; // 文件全文（≤16KB）/ 抓取内容（≤4000 字符）；达注入预算时不注入
   absPath?: string; // 本地目标的绝对路径（图片给宿主 AI 视觉读取；缺失时告知查找位置）
+  note?: string; // 预算外略过说明（内容不注入，亮路径供按需 Read）
 }
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'pdf', 'docx', 'doc'];
@@ -74,25 +75,56 @@ function fetchUrl(url: string): { status: 'ok' | 'fetch-failed'; content?: strin
 
 /**
  * 消解引用：baseDir 为基准目录（任务目录），相对路径相对它展开
- * 本地文本文件读全文（≤16KB，超长截断标注）；图片确认存在并给绝对路径；URL 抓取
+ * 双层限额（对齐 speccore：单文件上限 + 聚合总量上限）——
+ * 本地文本文件读全文（≤16KB，超长截断标注）；图片确认存在并给绝对路径；URL 抓取；
+ * 聚合层面：最多 6 个引用注入内容、总量 ≤20000 字符，超出的只亮路径供按需 Read
  */
 export function resolveReferences(text: string, baseDir: string): ResolvedReference[] {
+  const MAX_REF_CONTENT = 6; // 注入内容的引用数上限
+  const MAX_REF_TOTAL = 20000; // 引用内容聚合总量上限
   const refs = extractReferences(text);
-  return refs.map((ref) => {
+  const result: ResolvedReference[] = [];
+  let injected = 0;
+  let total = 0;
+  const overBudget = (r: ResolvedReference): boolean =>
+    !!r.content && (injected >= MAX_REF_CONTENT || total + r.content!.length > MAX_REF_TOTAL);
+  for (const ref of refs) {
+    let r: ResolvedReference;
     if (ref.kind === 'url') {
-      return { ...ref, ...fetchUrl(ref.target) };
+      r = { ...ref, ...fetchUrl(ref.target) };
+    } else {
+      const abs = isAbsolute(ref.target) ? ref.target : resolve(baseDir, ref.target);
+      if (!existsSync(abs)) {
+        result.push({ ...ref, status: 'missing', absPath: abs });
+        continue;
+      }
+      if (ref.kind === 'image') {
+        result.push({ ...ref, status: 'ok', absPath: abs });
+        continue;
+      }
+      // 文本文件：读全文嵌入（上下文轻，给得起全文；超长截断保底）
+      const raw = readFileSync(abs, 'utf-8');
+      const MAX = 16384;
+      r = {
+        ...ref,
+        status: 'ok',
+        absPath: abs,
+        content: raw.length > MAX ? raw.slice(0, MAX) + `\n…（截断，原文共 ${raw.length} 字符）` : raw,
+      };
     }
-    const abs = isAbsolute(ref.target) ? ref.target : resolve(baseDir, ref.target);
-    if (!existsSync(abs)) return { ...ref, status: 'missing' as const, absPath: abs };
-    if (ref.kind === 'image') return { ...ref, status: 'ok' as const, absPath: abs };
-    // 文本文件：读全文嵌入（上下文轻，给得起全文；超长截断保底）
-    const raw = readFileSync(abs, 'utf-8');
-    const MAX = 16384;
-    return {
-      ...ref,
-      status: 'ok' as const,
-      absPath: abs,
-      content: raw.length > MAX ? raw.slice(0, MAX) + `\n…（截断，原文共 ${raw.length} 字符）` : raw,
-    };
-  });
+    // 聚合限额：超出注入预算的内容不注入，只亮路径（AI 按需 Read）
+    if (overBudget(r)) {
+      const path = r.absPath || r.target;
+      r = {
+        ...r,
+        content: undefined,
+        note: `内容略过（已达引用注入预算：最多 ${MAX_REF_CONTENT} 个 / 总量 ${MAX_REF_TOTAL} 字符），按需 Read：${path}`,
+      };
+    } else if (r.content) {
+      total += r.content.length;
+      injected++;
+    }
+    result.push(r);
+  }
+  return result;
 }
