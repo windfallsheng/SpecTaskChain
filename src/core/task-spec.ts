@@ -28,6 +28,7 @@ export interface TaskSpec {
   priority?: string;      // 优先级（P0/P1/P2 或自由值；筛选与展示）
   tags?: string[];        // 标签（自由关键词；跨批次按主题筛选）
   estimate?: number;      // 预估工时（小时；report/status 汇总）
+  role?: string;           // 执行角色（内置或 .taskchain/ROLES/{role}.md；type 管形态，role 管专业）
   body: string;           // 正文全文（自由表达，执行时全文注入）
 }
 
@@ -186,6 +187,7 @@ export function buildSpec(id: string, dir: string, data: Record<string, any>, bo
         ? String(data.tags).split(/[,，]/).map((s) => s.trim()).filter(Boolean)
         : undefined,
     estimate: data.estimate !== undefined && data.estimate !== '' && !isNaN(Number(data.estimate)) ? Number(data.estimate) : undefined,
+    role: data.role ? String(data.role) : undefined,
     body,
   };
 }
@@ -221,7 +223,7 @@ function foldScalar(s: string): string {
 /** 生成 SPEC.md 文件内容（frontmatter + 正文） */
 export function renderSpec(spec: {
   type?: string; goal: string; output: string; acceptance: AcceptanceSpec; dependsOn?: string[]; draft?: boolean; body?: string; name?: string;
-  createdAt?: string; priority?: string; tags?: string[]; estimate?: number;
+  createdAt?: string; priority?: string; tags?: string[]; estimate?: number; role?: string;
 }): string {
   const lines: string[] = ['---'];
   lines.push(`type: ${spec.type || 'general'}`);
@@ -235,6 +237,7 @@ export function renderSpec(spec: {
     spec.tags.forEach((t) => lines.push(`  - ${t}`));
   }
   if (spec.estimate !== undefined) lines.push(`estimate: ${spec.estimate}`);
+  if (spec.role) lines.push(`role: ${spec.role}`);
   if (spec.dependsOn && spec.dependsOn.length) {
     lines.push('depends-on:');
     spec.dependsOn.forEach((d) => lines.push(`  - ${d}`));

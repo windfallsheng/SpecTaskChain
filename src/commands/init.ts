@@ -96,6 +96,8 @@ export function initCommand(cwd: string, opts: InitOptions = {}): string {
     '    tasks/                  ← 任务平铺（SPEC.md 三必填 + 正文自由）',
     '    .taskchain/state.json   ← 状态文件（断点续跑）',
     '    .taskchain/TASK_TYPES/  ← 自定义任务类型定义',
+    '    .taskchain/ROLES/       ← 自定义执行角色（可带 applies-to 绑定任务类型/任务）',
+    '    .taskchain/TEMPLATES/   ← 规格正文模板（{type}.md 类型级 / SPEC.md 通用）',
     '',
     '下一步：',
     '  taskq new "给三个仓库写迁移文档"   ← 对话成规格（AI 生成草案，你确认）',

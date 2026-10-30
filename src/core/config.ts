@@ -15,12 +15,14 @@ export function resolveConfig(cwd = process.cwd()): TaskQConfig {
   return { projectRoot: cwd, queueDir, metaDir: join(queueDir, '.taskchain') };
 }
 
-/** 初始化队列骨架：queue/batch-001/ + .taskchain/TASK_TYPES/ + state.json（幂等）
+/** 初始化队列骨架：queue/batch-001/ + .taskchain/ 三大自定义院落（TASK_TYPES/ROLES/TEMPLATES）+ state.json（幂等）
  * 批次目录 = 「一次要做的所有任务」的容器，下次要用再建下一个（batch-002、batch-003…）
  * 已存在旧式 tasks/ 的老项目不动它（扫描兼容为第 0 批） */
 export function ensureStructure(cfg: TaskQConfig): void {
   mkdirSync(join(cfg.queueDir, 'batch-001'), { recursive: true });
-  mkdirSync(join(cfg.metaDir, 'TASK_TYPES'), { recursive: true });
+  mkdirSync(join(cfg.metaDir, 'TASK_TYPES'), { recursive: true }); // 自定义任务类型（管形态）
+  mkdirSync(join(cfg.metaDir, 'ROLES'), { recursive: true }); // 自定义执行角色（管专业，可带 applies-to 绑定）
+  mkdirSync(join(cfg.metaDir, 'TEMPLATES'), { recursive: true }); // 规格正文模板（管骨架）
   const statePath = join(cfg.metaDir, 'state.json');
   if (!existsSync(statePath)) {
     writeFileSync(statePath, JSON.stringify({ version: 1, tasks: {} }, null, 2), 'utf-8');

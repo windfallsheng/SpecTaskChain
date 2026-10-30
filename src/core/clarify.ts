@@ -1,11 +1,22 @@
 // 澄清检测：用户自己的操作行为——随叫随到的体检，系统只提供入口、检测和报告，从不打断
 // 两级信号：确定性信号（CLI 查，零成本）+ 语义信号（词表检测，拦截高危表达）
 import { existsSync } from 'fs';
-import { isAbsolute, resolve, basename, dirname } from 'path';
+import { isAbsolute, resolve, basename, dirname, join } from 'path';
 import { QueueScan } from './queue';
 import { TaskSpec, validateRequired } from './task-spec';
 import { extractReferences } from './references';
 import { isPlaceholderSlug, hasNonAscii } from './task-naming';
+import { resolveTaskRole, listBuiltinRoles, resolveEffectiveRole } from './task-role';
+
+/** 从任务目录上溯找 .taskchain（metaDir）：任务在 queue/{批次}/{任务}/ 或 queue/{批次}/{模块}/{子任务}/ 下 */
+function findMetaDir(taskDir: string): string {
+  let d = dirname(taskDir);
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(join(d, '.taskchain'))) return join(d, '.taskchain');
+    d = dirname(d);
+  }
+  return dirname(taskDir);
+}
 
 export interface ClarifyIssue {
   level: 'blocking' | 'suggest' | 'pending'; // 阻塞 / 建议 / 待定
@@ -69,6 +80,16 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyI
   }
   if (spec.draft) {
     issues.push({ level: 'pending', taskId: spec.id, message: '规格标记为 draft（未澄清/未补全），执行前建议先补全' });
+  }
+  // —— 角色体检：声明了但未定义 → 执行时回退通才，先亮明再跑 ——
+  if (spec.role && !resolveTaskRole(findMetaDir(spec.dir), spec.role)) {
+    issues.push({ level: 'suggest', taskId: spec.id, message: `角色「${spec.role}」未定义（内置：${listBuiltinRoles().join('/')}）——执行时回退通才；要专业化就补 .taskchain/ROLES/${spec.role}.md 或改 role 字段` });
+  } else if (!spec.role) {
+    // 未指定角色且无绑定：执行时宿主 AI 按内容自动选择（亮类型建议）——要固定就补 role 字段
+    const eff = resolveEffectiveRole(findMetaDir(spec.dir), spec);
+    if (eff.source === 'auto' && eff.suggestion) {
+      issues.push({ level: 'suggest', taskId: spec.id, message: `未指定角色——执行时 AI 按任务内容自动选择（类型建议：${eff.suggestion}）；要固定就补 role 字段，自定义角色放 .taskchain/ROLES/` });
+    }
   }
   return issues;
 }
@@ -208,7 +229,27 @@ export function detectChainIssues(queue: QueueScan): ClarifyIssue[] {
     ...detectModuleIssues(queue),
     ...detectDuplicateNames(queue),
     ...detectCycles(queue),
+    ...detectRoleConflicts(queue),
   ];
+}
+
+/** 角色绑定冲突检查：同一类型/任务被多个角色 applies-to 命中（已取文件名字典序第一个，其余建议收敛） */
+export function detectRoleConflicts(queue: QueueScan): ClarifyIssue[] {
+  const issues: ClarifyIssue[] = [];
+  const first = allTasks(queue)[0];
+  if (!first) return issues;
+  const metaDir = findMetaDir(first.dir);
+  const seen = new Set<string>();
+  for (const t of allTasks(queue)) {
+    const eff = resolveEffectiveRole(metaDir, t);
+    if (eff.conflict && eff.def) {
+      const key = `${t.type}|${eff.def.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      issues.push({ level: 'suggest', taskId: t.id, message: `角色绑定冲突：类型「${t.type}」被多个角色 applies-to 命中（已取「${eff.def.name}」）——建议收敛绑定，或用任务 role 字段显式指定` });
+    }
+  }
+  return issues;
 }
 
 /** 任务 ID 提取（跨平台）：路径末段即目录名（宿主 AI 消解「上面」后传入的就是这里） */

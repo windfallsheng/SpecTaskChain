@@ -86,7 +86,7 @@ describe('clarify：两级信号 + 分级报告', () => {
   });
 
   it('无问题报告为清晰可执行', () => {
-    const spec = buildSpec('t1', '/x', { goal: '写迁移文档', output: 'docs/', acceptance: { artifacts: [{ path: 'docs/*.md' }] } }, '', 'general');
+    const spec = buildSpec('t1', '/x', { role: 'document-writer', goal: '写迁移文档', output: 'docs/', acceptance: { artifacts: [{ path: 'docs/*.md' }] } }, '', 'general');
     expect(detectTaskIssues(spec)).toHaveLength(0);
   });
 });

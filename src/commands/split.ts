@@ -9,13 +9,26 @@ export interface SplitOptions {
   type?: string;  // 任务类型（缺省 general）
 }
 
-/** 拆分来源：存在的文件路径（读全文）或纯文字（原样用） */
+// 拆分输入防爆：单文档超长截断（超长文档建议按章节分段拆分，或让 AI 按需 Read 原文）
+const MAX_SPLIT_CHARS = 30000;
+
+/** 拆分来源：存在的文件路径（读全文，超长截断）或纯文字（原样用） */
 function loadSource(input: string): { source: string; content: string } {
   const abs = isAbsolute(input) ? input : resolve(process.cwd(), input);
   if (existsSync(abs) && statSync(abs).isFile()) {
-    return { source: abs, content: readFileSync(abs, 'utf-8') };
+    const raw = readFileSync(abs, 'utf-8');
+    const content =
+      raw.length > MAX_SPLIT_CHARS
+        ? raw.slice(0, MAX_SPLIT_CHARS) +
+          `\n\n…（文档过长，已截断至 ${MAX_SPLIT_CHARS} 字符；建议按章节分段拆分，或让 AI 按需 Read 原文：${abs}）`
+        : raw;
+    return { source: abs, content };
   }
-  return { source: '对话文字', content: input };
+  const content =
+    input.length > MAX_SPLIT_CHARS
+      ? input.slice(0, MAX_SPLIT_CHARS) + `\n…（文字过长，已截断至 ${MAX_SPLIT_CHARS} 字符）`
+      : input;
+  return { source: '对话文字', content };
 }
 
 /**

@@ -4,12 +4,28 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TaskQConfig, readState, writeState } from './config';
-import { scanQueue, buildExecutionSequence, findNextPending, selectBatch, latestBatchId, ExecutableTask } from './queue';
+import { scanQueue, buildExecutionSequence, findNextPending, selectBatch, latestBatchId, DOING_TIMEOUT_MS, ExecutableTask } from './queue';
 import { resolveTaskType } from './task-type';
 import { resolveReferences } from './references';
+import { renderEffectiveRoleSegment, resolveEffectiveRole } from './task-role';
 
 /** 每任务尝试上限（失败重试，超过标记 failed 不再接力） */
 export const MAX_ATTEMPTS = 3;
+
+// —— 上下文防爆（Speccore 教训：prompt 无上限必爆；截断 + 亮明原文路径，AI 按需 Read 原文）——
+const MAX_BODY_CHARS = 12000; // 规格正文截断上限
+const MAX_PROGRESS_CHARS = 4000; // 执行留痕截断上限（保留最新进度尾部）
+const MAX_CONSTRAINTS_CHARS = 8000; // 模块约束截断上限
+
+/** 防爆截断：超长时 tail 取尾部（进度类，最新在尾），否则取头部（正文/约束类）；标注省略量与原文路径 */
+function guardLong(text: string, max: number, tail: boolean, sourcePath?: string): string {
+  if (text.length <= max) return text;
+  const hint = sourcePath ? `（如需完整内容请 Read 原文：${sourcePath}）` : '';
+  if (tail) {
+    return `…（前文省略 ${text.length - max} 字符）\n${text.slice(-max)}`;
+  }
+  return `${text.slice(0, max)}\n…（原文共 ${text.length} 字符，已截断${hint}）`;
+}
 
 export interface NextTaskInfo {
   task: ExecutableTask;
@@ -34,7 +50,7 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
       lines.push('');
       lines.push('这是上次执行留下的进度（做到了哪、在等什么）。先读它：按留痕续做，不要从头重做。');
       lines.push('');
-      lines.push(progress);
+      lines.push(guardLong(progress, MAX_PROGRESS_CHARS, true));
       lines.push('');
     }
   }
@@ -48,9 +64,11 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
   lines.push(`### 产出位置\n${spec.output}`);
   lines.push('');
   if (spec.body.trim()) {
-    lines.push(`### 规格正文\n${spec.body.trim()}`);
+    lines.push(`### 规格正文\n${guardLong(spec.body.trim(), MAX_BODY_CHARS, false, join(spec.dir, 'SPEC.md'))}`);
     lines.push('');
   }
+  // —— 执行角色（可选：type 管形态，role 管专业；显式 role 或 applies-to 绑定自动匹配，无则保持老行为）——
+  lines.push(...renderEffectiveRoleSegment(resolveEffectiveRole(metaDir, spec)));
   // —— 模块身份与公共约束（恒存在段：每次执行子任务前重读共享 spec，等于重置必须的提示词）——
   if (exec.module) {
     const idx = exec.module.subtasks.findIndex((s) => s.id === spec.id) + 1;
@@ -61,7 +79,7 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
     if (exec.module.constraints.trim()) {
       lines.push('模块公共约束（共享 spec，每次执行前重新读取，必须遵守）：');
       lines.push('');
-      lines.push(exec.module.constraints.trim());
+      lines.push(guardLong(exec.module.constraints.trim(), MAX_CONSTRAINTS_CHARS, false, exec.module.constraintsPath));
     } else {
       lines.push('⚠️ 本模块未声明公共约束（CONSTRAINTS.md 缺失或为空）。');
     }
@@ -254,5 +272,94 @@ export function queueSummary(cfg: TaskQConfig, opts: { batch?: string } = {}): s
   }
   const next = findNextPending(sequence, state);
   lines.push(next ? `下一个接力任务：「${next.spec.id}」` : '队列已清空或全部完成');
+  return lines.join('\n');
+}
+
+// ============================================================
+// 批次接力（taskq execute）：run 的批量化——一次领取 N 个任务的完整 prompt
+// 拦停语义与 relayNext 完全一致（draft/模块缺共享 spec/doing 活跃/failed 需人工介入），批截止于拦停任务
+// ============================================================
+
+export interface BatchRelayResult {
+  tasks: ExecutableTask[];  // 本批领取的任务
+  prompts: string[];        // 与 tasks 一一对应的完整执行 prompt
+  exitCode: number;         // 10 = 有批待执行（宿主 AI 按序接力），12 = 拦截，0 = 队列已清空
+  summary: string;          // 批状态摘要（含执行约定）
+  stopReason?: string;      // 批后拦停原因（批内任务已发，批后的拦停提醒）
+}
+
+/** 领取一批任务（默认 3 个）：按执行序列取连续未完成任务，批内逐个渲染 prompt + 占位 doing */
+export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?: number; skipDraft?: boolean } = {}): BatchRelayResult {
+  const queue = scanQueue(cfg.queueDir, cfg.metaDir);
+  const view = selectBatch(queue, opts.batch);
+  if (!view) {
+    return {
+      tasks: [],
+      prompts: [],
+      exitCode: 12,
+      summary: `❌ 批次「${opts.batch}」不存在。现有批次：${queue.batches.map((b) => b.id).join('、') || '无（队列为空）'}`,
+    };
+  }
+  const sequence = buildExecutionSequence(view);
+  const state = readState(cfg);
+  const batchSize = Math.max(1, opts.batchSize || 3);
+  const taken: ExecutableTask[] = [];
+  let stop: string | undefined;
+
+  for (const t of sequence) {
+    if (taken.length >= batchSize) break;
+    const st = state[t.spec.id];
+    if (st?.status === 'done') continue;
+    if (st?.status === 'failed') {
+      stop = `⛔ 任务「${t.spec.id}」已失败 ${st.attempts} 次（达尝试上限）——需人工介入：检查产出与规格，修复后运行 \`taskq done ${t.spec.id} --verdict "..."\` 重新验收；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`;
+      break;
+    }
+    if (st?.status === 'doing') {
+      const at = st.doingAt ? new Date(st.doingAt).getTime() : 0;
+      if (Date.now() - at <= DOING_TIMEOUT_MS) {
+        stop = `⏳ 任务「${t.spec.id}」正在执行中（${st.doingAt} 领取）。执行者完成后会调 taskq done 登记；若执行者已中断，超过 24 小时自动重拾`;
+        break;
+      }
+      // 孤儿 doing：领取超时视为执行者已中断，重拾（与 findNextPending 语义一致）
+    }
+    if (t.module && t.module.constraintsMissing) {
+      stop = `⏸ 任务「${t.spec.id}」属于模块「${t.module.id}」，但模块公共约束 CONSTRAINTS.md 缺失或为空——先补全再接力：${t.module.constraintsPath}`;
+      break;
+    }
+    if (t.spec.draft && !opts.skipDraft) {
+      stop = `⏸ 任务「${t.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${t.spec.id}\` 补全；或 \`taskq execute --skip-draft\` 强跑`;
+      break;
+    }
+    taken.push(t);
+  }
+
+  if (!taken.length) {
+    if (stop) return { tasks: [], prompts: [], exitCode: 12, summary: stop };
+    return { tasks: [], prompts: [], exitCode: 0, summary: `✅ 队列已清空：${sequence.length} 个任务全部完成` };
+  }
+
+  const prompts = taken.map((t) => buildTaskPrompt(t, cfg.metaDir, cfg.projectRoot));
+  // 批内全部占位 doing：串行执行整批，done 逐个销账（中断 24 小时后自动重拾）
+  taken.forEach((t) => markTaskState(cfg, t.spec.id, 'doing'));
+  const ids = taken.map((t) => t.spec.id).join('、');
+  const lines: string[] = [
+    `📦 批次接力：一次领取 ${taken.length} 个任务（${ids}）`,
+    `按顺序执行：每个完成即 \`taskq done <id> --verdict "..."\`；批内全部完成后再次 \`taskq execute\` 取下一批，直到退出码 0`,
+  ];
+  if (stop) lines.push(`⛔ 批后拦停（下一批处理）：${stop}`);
+  return { tasks: taken, prompts, exitCode: 10, summary: lines.join('\n'), stopReason: stop };
+}
+
+/** 渲染批次接力输出：批摘要 + 逐任务 [TASKQ_PROMPT] 块 + 执行约定 */
+export function renderBatchResult(r: BatchRelayResult): string {
+  const lines: string[] = [r.summary, ''];
+  r.tasks.forEach((t, i) => {
+    lines.push(`───── 批次任务 ${i + 1}/${r.tasks.length}：${t.spec.id} ─────`);
+    lines.push('');
+    lines.push('[TASKQ_PROMPT]');
+    lines.push(r.prompts[i]);
+    lines.push('[TASKQ_PROMPT_END]');
+    lines.push('');
+  });
   return lines.join('\n');
 }

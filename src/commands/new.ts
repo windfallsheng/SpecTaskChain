@@ -9,6 +9,7 @@ import { renderSpec } from '../core/task-spec';
 import { resolveTaskType, listBuiltinTypes } from '../core/task-type';
 import { toSlug, hasCJK } from '../core/task-naming';
 import { scanQueue, latestBatchId, QueueScan } from '../core/queue';
+import { resolveSpecTemplate, templateSourceLabel } from '../core/task-template';
 
 export interface NewOptions {
   name?: string;    // 任务名（英文直接作 slug；中文转全拼作 slug + 原样作显示名）
@@ -19,6 +20,7 @@ export interface NewOptions {
   priority?: string; // 优先级（P0/P1/P2 或自由值）
   tags?: string[];   // 标签（自由关键词；跨批次按主题筛选）
   estimate?: number; // 预估工时（小时）
+  role?: string;    // 执行角色（内置或 .taskchain/ROLES/{role}.md；type 管形态，role 管专业）
   goal: string;     // 任务描述（用户原话）
 }
 
@@ -97,6 +99,8 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
       return `❌ 子任务目录「${modName}/${subId}-${slug}」已存在（名称撞车）。换一个 --name，或先处理现有子任务目录。`;
     }
     mkdirSync(subDir, { recursive: true });
+    // 正文 = 规格模板骨架（覆盖链：任务级 → 类型级 → 通用 → 系统内置）
+    const subTpl = resolveSpecTemplate(cfg.metaDir, subDir, typeDef.name);
     writeFileSync(
       join(subDir, 'SPEC.md'),
       renderSpec({
@@ -109,8 +113,9 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
         priority: opts.priority,
         tags: opts.tags,
         estimate: opts.estimate,
+        role: opts.role,
         draft: true,
-        body: opts.goal,
+        body: subTpl.content,
       }),
       'utf-8'
     );
@@ -134,6 +139,8 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
     return `❌ 任务目录「${id}」已存在（名称撞车）。换一个 --name，或先处理现有任务目录。`;
   }
   mkdirSync(taskDir, { recursive: true });
+  // 正文 = 规格模板骨架（覆盖链：任务级 → 类型级 → 通用 → 系统内置）
+  const tpl = resolveSpecTemplate(cfg.metaDir, taskDir, typeDef.name);
   writeFileSync(
     join(taskDir, 'SPEC.md'),
     renderSpec({
@@ -146,9 +153,10 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
       priority: opts.priority,
       tags: opts.tags,
       estimate: opts.estimate,
+      role: opts.role,
       // 新任务恒定 draft 骨架起步：补全规格（clarify 通过）前，taskq run 拦截（--skip-draft 可强跑）
       draft: true,
-      body: opts.goal,
+      body: tpl.content,
     }),
     'utf-8'
   );
@@ -157,12 +165,13 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
     '',
     `  类型：${opts.type || 'general'}（${typeDef.code ? '代码任务' : '非代码任务'})`,
     `  可用类型：${listBuiltinTypes().join(' / ')}，自定义类型放 .taskchain/TASK_TYPES/{类型}.md`,
+    `  正文模板：${templateSourceLabel(tpl.source, typeDef.name)}（已按此骨架落盘；自定义放 .taskchain/TEMPLATES/{类型}.md 或通用 SPEC.md）`,
     '',
   ];
   if (!opts.draft) {
     lines.push('[TASKQ_SPEC_DRAFT] 宿主 AI 请根据任务描述生成规格草案并写回 SPEC.md：');
-    lines.push('  1. output 填产出位置；2. acceptance 填验收三态（artifacts 产物门禁 / checks 断言门禁 / review 评审门禁）；3. 正文补充细节与边界（做什么、不做什么）。');
-    lines.push('  命名要求：若 frontmatter 无 name 字段，补一个显示名（\`name: 用户迁移文档\`，可中文）；目录名已是 ASCII slug，不要改目录名。');
+    lines.push('  1. output 填产出位置；2. acceptance 填验收三态（artifacts 产物门禁 / checks 断言门禁 / review 评审门禁）；3. 正文按已落盘的模板骨架补全细节与边界（做什么、不做什么，可增删小节）。');
+    lines.push('  命名要求：若 frontmatter 无 name 字段，补一个显示名（\`name: 用户迁移 文档\`，可中文）；目录名已是 ASCII slug，不要改目录名。');
     lines.push(`  写回后提醒用户确认：\`taskq clarify --task ${id}\`（随叫随到的体检）。`);
   }
   return lines.join('\n');
