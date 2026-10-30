@@ -9,7 +9,9 @@
 ```
 queue/tasks/                    ← 任务平铺目录
 queue/.taskchain/state.json     ← 状态文件
-queue/.taskchain/TASK_TYPES/    ← 自定义类型目录
+queue/.taskchain/TASK_TYPES/    ← 自定义类型目录（管形态）
+queue/.taskchain/ROLES/         ← 自定义执行角色（管专业，可带 applies-to 绑定）
+queue/.taskchain/TEMPLATES/     ← 规格正文模板（{type}.md 类型级 / SPEC.md 通用）
 ```
 
 ```
@@ -19,7 +21,7 @@ taskq init [--tools 工具名[,工具名]] [--update]
 | 参数 | 说明 |
 | :--- | :--- |
 | `--tools 工具名` | 生成宿主 AI 接力规则文件（教宿主如何读队列、执行 [TASKQ_PROMPT]、按退出码接力）。支持逗号分隔多个工具 |
-| `--update` | 增量升级：把**已生成**的宿主规则文件刷新到 CLI 当前版本（对齐 speccore init --update 惯例），可搭配 `--tools` 指定只刷新部分工具 |
+| `--update` | 增量升级：把**已生成**的宿主规则文件刷新到 CLI 当前版本（对齐 speccore init --update 惯例）+ 补齐新骨架目录，可搭配 `--tools` 指定只刷新部分工具 |
 
 > init 本身幂等：重复执行不破坏已有数据；工具规则刷新用 `--update` 语义更明确。
 
@@ -97,6 +99,34 @@ taskq run [--skip-draft]
 | `0` | 队列已清空 | 完成 |
 
 完整协议见 [relay-protocol.md](relay-protocol.md)。
+
+## taskq execute
+
+批次接力：一次领取 N 个任务的完整 prompt，宿主 AI 逐个开子任务执行、逐个 `done` 登记、连续取批。批内各 prompt 独立自包含（不用 subagent 也成立），拦停语义同 run。
+
+```
+taskq execute [--batch-size N] [--skip-draft] [--batch 批次|all]
+```
+
+- `--batch-size N`：每批领取的任务数（默认 3）。单 prompt 有防爆限额，批总长可控。
+- `--batch 批次|all`：聚焦指定批次或全队列（默认最新批次）。
+- 批内首个任务占位 doing 后即拦停：同批内已有任务处于 doing（上一棒未登记）时，先停——账本只能有一个执行者。
+
+## taskq split
+
+文档拆任务：从一份 MD 或纯文字拆出任务草案（拆 → 确认 → 逐个完善）。超长文档（>30000 字符）自动截断并亮明原文路径。
+
+```
+taskq split <文件或文字> [--group 模块名] [--type 类型]
+```
+
+## taskq pipeline
+
+端到端流水线：素材（描述/文件/目录）进 → 拆分 → 澄清 → 批次执行 → 复盘，编排归宿主 AI，三个拦停点保人工确认。
+
+```
+taskq pipeline <描述或文件或目录> [--type 类型] [--group 模块] [--batch 批次] [--batch-size N]
+```
 
 ## taskq done
 

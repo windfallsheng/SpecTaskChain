@@ -98,3 +98,9 @@ taskq run  →  AI 执行 prompt  →  taskq done  →  taskq run  →  ...
 - 规格怎么写：[spec-format.md](spec-format.md)
 - 队列怎么组织：[queue-structure.md](queue-structure.md)
 - 验收怎么设计：[acceptance.md](acceptance.md)
+
+进阶（零配置可跑，按需取用）：
+
+- **执行角色**：SPEC frontmatter 加 `role: <角色名>` 指定执行专家；什么都不写时 AI 按任务内容自动选角。自定义角色放 `.taskchain/ROLES/{角色}.md`（可带 `applies-to` 绑定类型/任务）——详见 [queue-structure.md](queue-structure.md) 执行角色章。
+- **规格模板**：`.taskchain/TEMPLATES/SPEC.md`（通用）或 `TEMPLATES/{类型}.md`（类型级）写骨架，`taskq new` 落盘即用——详见 [queue-structure.md](queue-structure.md) 规格模板章。
+- **批次接力**：`taskq execute --batch-size 3` 一次领三个任务的 prompt 连续跑；一句话需求走 `taskq pipeline` 端到端。

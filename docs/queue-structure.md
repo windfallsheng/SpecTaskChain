@@ -59,6 +59,7 @@ tags:                      # 标签（自由关键词，跨批次按主题筛）
   - 客户
   - Q4
 estimate: 8                # 预估工时（小时）
+role: security-reviewer    # 执行角色（type 管形态，role 管专业；见「执行角色」章）
 goal: ...
 output: ...
 acceptance: ...
@@ -137,6 +138,32 @@ description: 内部工具开发
 
 类型定义文件不存在或损坏时回退通用非代码定义。核心规则：**非代码类型默认与代码世界绝缘，显式声明 `code: true` 才切代码形态**——执行 prompt 里会明确告知 AI。
 
+## 执行角色（可选：type 管形态，role 管专业）
+
+`role` 与 `type` 正交：type 管「产出什么形态」（代码与否/产出位置/默认约束），role 管「以什么专业身份干」（角色立场/专业关注点/角色禁忌，执行时注入 prompt）。
+
+- **内置角色**（10 个，命名语义化 + 专业化）：generalist（通才兜底）/ document-writer（文档写作）/ code-engineer（代码工程）/ debug-engineer（缺陷修复）/ test-engineer（测试工程）/ security-reviewer（安全审查）/ devops-engineer（运维工程）/ data-analyst（数据分析）/ research-analyst（调研分析）/ presentation-designer（演示设计）。旧名（doc-writer/coder/tester/ops/analyst/designer）走别名零感知兼容
+- **自定义角色**：`.taskchain/ROLES/{角色}.md`（YAML frontmatter：stance/focus/taboos/description/applies-to），与 TASK_TYPES 同模式；同名自定义角色覆盖内置（用户压过系统）
+- **角色绑定（applies-to）**：定义角色时声明适用场合——`types: [doc, research]` 按任务类型套用，`tasks: [01-xxx]` 按任务 ID 精确套用（压过类型绑定）。同一类型多个角色绑定 → 取文件名字典序第一个，执行 prompt 与 clarify 都会亮明冲突
+- **AI 自动选择（内容驱动）**：任务既没显式 role 也没绑定命中时，执行 prompt 注入角色菜单 + 类型建议（bugfix→debug-engineer、data→data-analyst……），宿主 AI 按任务内容定夺最专业的角色，可推翻建议；选定后建议把 role 写回 SPEC.md 固化（下次免重复决策）。clarify 也会提示未固化角色
+- **声明了但找不到定义**：执行 prompt 亮明回退通才，clarify 也会提示
+
+## 规格模板（生成 SPEC 正文的骨架）
+
+new 落盘时正文即模板骨架，宿主 AI 在骨架内补全细节；对话成规格的 prompt 也会按模板引导。覆盖链（具体到通用，用户覆盖系统）：
+
+1. **任务级**：任务目录内 `TEMPLATE.md`（某个任务自有的模板，最高优先）
+2. **类型级**：`.taskchain/TEMPLATES/{类型}.md`（如 doc.md / bugfix.md，只管这一种类型）
+3. **通用级**：`.taskchain/TEMPLATES/SPEC.md`（所有类型的兜底骨架）
+4. **系统内置**：8 种类型各有一套内置骨架（doc 有背景/大纲/结构，bugfix 有问题/根因/修复/回归……）
+
+new 输出会亮明本次模板来源；模板只管正文章节骨架，frontmatter 三必填（goal/output/acceptance）与 draft 标记不受模板影响。
+
+## 批次接力（taskq execute）与端到端流水线（taskq pipeline）
+
+- `taskq execute [--batch-size N]`：run 的批量化——一次领取 N 个任务的完整 prompt（默认 3），宿主 AI 按序执行逐个 done，批内全部完成再次 execute 取下一批。拦停语义与 run 完全一致（draft/模块缺共享 spec/doing 活跃/failed 需人工介入），批截止于拦停任务并亮明原因。
+- `taskq pipeline <描述或文件或目录>`：端到端流水线剧本——采集（CLI 确定性：目录递归文本文件/多文件/纯文字）→ 拆分（宿主 AI，只出 goal+初步内容）→ 澄清（用户亲自点头验收三态）→ 执行（execute 批次接力）→ 收尾（report 复盘）。三个拦停点（拆分清单确认/澄清全绿/失败介入），编排归宿主 AI。
+
 ## 状态文件（state.json）
 
 ```json
@@ -156,6 +183,21 @@ description: 内部工具开发
 - **断点续跑的唯一事实源**：任务状态、尝试次数、验收结论全部落盘。
 - 状态缺失（文件损坏）时按空状态处理，任务视为未完成重新接力。
 - `state.json` 是机器账本，手动改前先备份；跨工具接力（换 IDE/换 AI 工具）不需要任何迁移——文件就在队列里。
+
+## 上下文防爆（prompt 尺寸有上限）
+
+执行 prompt 自包含但不会无限膨胀——无上限注入必爆上下文（Speccore 项目的教训）。所有大文本进 prompt 前一律截断，超长时亮明原文路径，宿主 AI 按需 Read：
+
+| 注入源 | 上限 | 截断策略 |
+|:---|:---|:---|
+| 规格正文（SPEC.md） | 12000 字符 | 截头部 + 亮明 SPEC.md 路径 |
+| 执行留痕（PROGRESS.md） | 4000 字符 | 留尾部（断点续跑看「最新做到哪」） |
+| 模块约束（CONSTRAINTS.md） | 8000 字符 | 截头部 + 亮明 CONSTRAINTS.md 路径 |
+| 引用资料（references） | 4000 / 16384 字符 | 逐引用截断（URL / 本地文件） |
+| 流水线素材（pipeline） | 20000 / 50000 字符 | 单文件 / 总量 |
+| 拆分输入（split） | 30000 字符 | 截头部 + 建议按章节分段拆分 |
+
+批内 N 个 prompt 各自独立注入，单 prompt 封顶 → 批总长 = N × 单上限，可控。
 
 ## 断点续跑语义
 
