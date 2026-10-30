@@ -25,9 +25,9 @@ npm install -g spec-taskchain
 ```bash
 taskq init --tools qoder                             # 初始化骨架 + 生成宿主工具接力规则（--update 可刷新到最新版）
 taskq new "写三篇迁移文档" --type doc                # 建任务：落盘 draft 骨架，AI 生成规格草案
-taskq clarify --task 01-task-01                     # 体检单个任务（三必填齐了没有、有没有模糊词）
+taskq clarify --task 01-qianyiwendang               # 体检单个任务（三必填齐了没有、有没有模糊词）
 taskq run                                           # 无人值守接力：输出下一任务的完整 prompt
-taskq done 01-task-01 --verdict "pass 结构清晰"       # 验收登记（产物/断言/评审三态门禁）
+taskq done 01-qianyiwendang --verdict "pass 结构清晰"  # 验收登记（产物/断言/评审三态门禁）
 taskq status --panel                                # 队列总览 + HTML 可视化面板
 taskq report                                        # 队列报告（执行留痕，有账可查）
 taskq ask "看下进度"                                 # 口语入口
@@ -38,13 +38,13 @@ taskq ask "看下进度"                                 # 口语入口
 | 命令 | 说明 |
 | :--- | :--- |
 | `taskq init [--tools 工具名[,工具名]] [--update]` | 初始化队列骨架（幂等）+ 生成/刷新宿主工具接力规则（qoder/claude/cursor/windsurf/trae/codex） |
-| `taskq new <描述> [--type 类型] [--group 模块名] [--draft]` | 建任务/模块子任务（恒定 draft 骨架起步） |
+| `taskq new <描述> [--type 类型] [--group 模块名] [--batch 批次] [--priority P1] [--tags a,b] [--estimate 8] [--draft]` | 建任务/模块子任务（恒定 draft 骨架起步） |
 | `taskq clarify [--task ID] [--file 路径] [--chain]` | 随叫随到的体检（四入口） |
-| `taskq run [--skip-draft]` | 无人值守接力执行（输出下一任务 prompt + 退出码） |
+| `taskq run [--skip-draft] [--batch 批次\|all]` | 无人值守接力执行（默认聚焦最新批次；输出下一任务 prompt + 退出码） |
 | `taskq done <task-id> [--verdict "..."]` | 验收登记（产物/断言/评审三态门禁） |
-| `taskq list` | 队列清单 |
-| `taskq status [--panel]` | 队列总览（--panel 生成 HTML 可视化面板） |
-| `taskq report` | 队列报告（执行留痕，有账可查） |
+| `taskq list [--batch 批次] [--status 状态] [--type 类型]` | 队列清单（按批次分组，三扇窗筛选） |
+| `taskq status [--panel] [--batch 批次\|all]` | 队列总览（--panel 生成 HTML 可视化面板） |
+| `taskq report [--batch 批次] [--status 状态] [--type 类型]` | 队列报告（执行留痕，有账可查） |
 | `taskq ask "自然语言"` | 口语入口（建任务/澄清/跑队列/看进度） |
 
 完整参数与行为见 [docs/commands.md](docs/commands.md)。
@@ -66,17 +66,22 @@ taskq ask "看下进度"                                 # 口语入口
 
 ```
 queue/
-├── tasks/                  ← 任务平铺（SPEC.md 三必填 + 正文自由）
-│   ├── 01-task-01/
+├── batch-001/               ← 批次目录：一次要做的全部任务（下次要再建 batch-002…）
+│   ├── BATCH.md             ← [可选] 批次元数据（name/purpose/created-at）
+│   ├── 01-qianyiwendang/    ← 顶层任务：目录名 = 任务 ID（编号全局递增）
 │   │   └── SPEC.md
-│   └── auth/               ← 任务模块（共享 spec 的院落）
-│       ├── CONSTRAINTS.md  ← 模块公共约束（每次执行子任务前重读）
-│       └── 01-task-02/
+│   └── module-auth/         ← 任务模块（共享 spec 的院落，module- 前缀）
+│       ├── CONSTRAINTS.md   ← 模块公共约束（顶部可加 name/purpose/created-at 元数据）
+│       └── 02-denglujiekou/ ← 第三层子任务
 │           └── SPEC.md
 └── .taskchain/
     ├── state.json          ← 状态文件（断点续跑的唯一事实源）
     └── TASK_TYPES/         ← 自定义任务类型定义
 ```
+
+**批次（batch-NNN）**：一次要做的所有任务装一个批次目录。`taskq run`/`status` 默认聚焦最新批次（新批次插队先跑），老批次 `--batch` 点名再跑；旧式 `tasks/` 目录兼容为第 0 批。
+
+**元数据（都可选）**：任务 SPEC.md 的 `created-at`/`priority`/`tags`/`estimate`（new 自动落 created-at，`--priority P1 --tags 客户,Q4 --estimate 8` 一次落全）；批次 BATCH.md 与模块 CONSTRAINTS.md 顶部 frontmatter 挂 name/purpose/created-at。list/report 支持 `--batch`/`--status`/`--type` 三扇窗筛选，任务行带 ⚑优先级 ⏱工时徽章，报告汇总总工时与优先级分布。
 
 ## AI 接力协议（一句话版）
 
@@ -88,8 +93,11 @@ queue/
 
 完整协议（含跨工具续跑、无人值守与人工介入的边界）见 [docs/relay-protocol.md](docs/relay-protocol.md)。
 
-## 能力清单（v0.1.0 已全部实装）
+## 能力清单（v0.2.0）
 
+- **批次架构**：batch-NNN 多批次目录，聚焦语义（new 落最新 / run 跑最新 / --batch 点名），旧 tasks 兼容
+- **命名仪式**：任务目录语义 slug（--name 优先 → goal 全拼 → 类型键兜底），模块 module- 前缀，编号全局递增不撞账本键
+- **元数据与筛选**：created-at/priority/tags/estimate + 批次/模块可选元数据 + list/report 三扇窗筛选
 - `taskq split`：从一份文档拆分出任务草案（拆 → 确认 → 逐个完善）
 - 引用消解：SPEC 中引用的文件/图片/链接由 CLI 读取真实内容嵌入 prompt
 - 模块约束加固：CONSTRAINTS.md 缺失即阻塞，绝不静默裸奔
