@@ -280,7 +280,7 @@ describe('版本事实源与 init 工具参数', () => {
   });
 
   it('initCommand 带 --tools 不静默吞参数，生成规则并明示路径', () => {
-    const out = initCommand(makeCfg().projectRoot, { tools: 'qoder' });
+    const out = initCommand(makeCfg().projectRoot, { tools: ['qoder'] });
     expect(out).toContain('已生成 qoder');
     expect(out).toContain('taskq-relay.md');
   });
@@ -293,34 +293,58 @@ describe('版本事实源与 init 工具参数', () => {
 
   it('initCommand --tools qoder 生成 .qoder/rules/taskq-relay.md（真实产出）', () => {
     const root = makeCfg().projectRoot;
-    const out = initCommand(root, { tools: 'qoder' });
+    const out = initCommand(root, { tools: ['qoder'] });
     expect(out).toContain('taskq-relay.md');
     const p = join(root, '.qoder', 'rules', 'taskq-relay.md');
     expect(existsSync(p)).toBe(true);
-    expect(readFileSync(p, 'utf-8')).toContain('接力协议');
-    expect(readFileSync(p, 'utf-8')).toContain('[TASKQ_PROMPT]');
+    const content = readFileSync(p, 'utf-8');
+    expect(content).toContain('接力协议');
+    expect(content).toContain('[TASKQ_PROMPT]');
+    expect(content).toContain('规则版本');
   });
 
   it('initCommand --tools claude 追加锚点块且重复执行不重复', () => {
     const root = makeCfg().projectRoot;
     writeFileSync(join(root, 'CLAUDE.md'), '# 项目说明\n\n现有内容\n', 'utf-8');
-    initCommand(root, { tools: 'claude' });
-    initCommand(root, { tools: 'claude' });
+    initCommand(root, { tools: ['claude'] });
+    initCommand(root, { tools: ['claude'] });
     const content = readFileSync(join(root, 'CLAUDE.md'), 'utf-8');
     expect(content.split('## taskq 接力协议').length - 1).toBe(1);
     expect(content).toContain('现有内容');
   });
 
+  it('initCommand --tools 多工具数组全生成', () => {
+    const root = makeCfg().projectRoot;
+    initCommand(root, { tools: ['qoder', 'cursor'] });
+    expect(existsSync(join(root, '.qoder', 'rules', 'taskq-relay.md'))).toBe(true);
+    expect(existsSync(join(root, '.cursor', 'rules', 'taskq-relay.md'))).toBe(true);
+  });
+
   it('initCommand 未知工具报警告不落盘', () => {
     const root = makeCfg().projectRoot;
-    const out = initCommand(root, { tools: 'nope' });
+    const out = initCommand(root, { tools: ['nope'] });
     expect(out).toContain('暂不支持');
     expect(existsSync(join(root, '.nope'))).toBe(false);
   });
 
-  it('initCommand --update 回应幂等语义而非静默吞掉', () => {
+  it('initCommand --update 刷新已生成的规则至当前版本（对齐 speccore）', () => {
+    const root = makeCfg().projectRoot;
+    initCommand(root, { tools: ['qoder'] });
+    const out = initCommand(root, { update: true });
+    expect(out).toContain('已刷新 1 个');
+    expect(out).toContain('taskq-relay.md');
+    expect(readFileSync(join(root, '.qoder', 'rules', 'taskq-relay.md'), 'utf-8')).toContain('规则版本');
+  });
+
+  it('initCommand --update 无已生成规则时给出引导', () => {
     const out = initCommand(makeCfg().projectRoot, { update: true });
-    expect(out).toContain('幂等');
-    expect(out).toContain('--update');
+    expect(out).toContain('未发现已生成的工具规则');
+  });
+
+  it('initCommand --update 指定工具只刷新该工具', () => {
+    const root = makeCfg().projectRoot;
+    initCommand(root, { tools: ['qoder', 'cursor'] });
+    const out = initCommand(root, { update: true, tools: ['qoder'] });
+    expect(out).toContain('已刷新 1 个');
   });
 });

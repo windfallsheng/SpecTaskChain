@@ -1,5 +1,6 @@
-// taskq init：初始化队列骨架（幂等）+ 可选生成宿主工具接力规则
+// taskq init：初始化队列骨架（幂等）+ 生成宿主工具接力规则；--update 增量升级（对齐 speccore 惯例）
 import { resolveConfig, ensureStructure } from '../core/config';
+import { readVersion } from '../core/version';
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 
@@ -15,12 +16,18 @@ const TOOL_RULES: Record<string, string> = {
 
 const RULE_ANCHOR = '## taskq 接力协议（SpecTaskChain）';
 
-/** 接力规则正文：教宿主 AI 如何驱动队列（退出码协议 / 验收三态 / 常用命令） */
+export interface InitOptions {
+  tools?: string[]; // 宿主工具（支持多个，逗号分隔传入）
+  update?: boolean; // 增量升级：刷新已生成的工具规则到 CLI 当前版本 + 补骨架
+}
+
+/** 接力规则正文：教宿主 AI 如何驱动队列（退出码协议 / 验收三态 / 常用命令）。带版本标记，--update 据此刷新 */
 function renderRuleSection(tool: string): string {
   return [
     RULE_ANCHOR,
     '',
-    `> 由 \`taskq init --tools ${tool}\` 生成，重复执行即刷新。`,
+    `> 由 \`taskq init --tools ${tool}\` 生成，规则版本 v${readVersion()}。`,
+    '> CLI 升级后执行 `taskq init --update` 可把本文件刷新到最新版。',
     '',
     '**队列是第一公民，链 = 接力（relay），不是依赖。**',
     '',
@@ -62,7 +69,24 @@ function writeToolRules(projectRoot: string, tool: string): string {
   return rel;
 }
 
-export function initCommand(cwd: string, opts: { tools?: string; update?: boolean } = {}): string {
+/** 该工具的规则文件是否已生成（update 模式的扫描依据） */
+function ruleExists(projectRoot: string, tool: string): boolean {
+  const target = join(projectRoot, TOOL_RULES[tool]);
+  if (!existsSync(target)) return false;
+  if (tool === 'claude' || tool === 'codex') {
+    return readFileSync(target, 'utf-8').includes(RULE_ANCHOR);
+  }
+  return true;
+}
+
+/** 过滤：指定工具（若传）∩ 已存在的规则 */
+function resolveUpdateTargets(projectRoot: string, tools?: string[]): string[] {
+  const all = Object.keys(TOOL_RULES);
+  const candidates = tools && tools.length > 0 ? all.filter((t) => tools.includes(t)) : all;
+  return candidates.filter((t) => ruleExists(projectRoot, t));
+}
+
+export function initCommand(cwd: string, opts: InitOptions = {}): string {
   const cfg = resolveConfig(cwd);
   ensureStructure(cfg);
   const lines = [
@@ -80,19 +104,42 @@ export function initCommand(cwd: string, opts: { tools?: string; update?: boolea
     '',
     'Chain = 接力（relay），不是依赖（dependency）。',
   ];
-  // --tools：生成宿主 AI 接力规则文件（重复执行即刷新）
-  if (opts.tools) {
-    const known = Object.keys(TOOL_RULES);
-    if (!known.includes(opts.tools)) {
-      lines.push('', `  ⚠️ 暂不支持的工具：${opts.tools}（支持：${known.join('/')}）`);
-    } else {
-      const rel = writeToolRules(cfg.projectRoot, opts.tools);
-      lines.push('', `  ✅ 已生成 ${opts.tools} 的宿主接力规则：${rel}（重复执行 init 即刷新）`);
-    }
-  }
-  // --update：不存在的参数——init 幂等，重复执行即更新，正面回应而非静默吞掉
+  const known = Object.keys(TOOL_RULES);
+  const unknownTools = (opts.tools || []).filter((t) => !known.includes(t));
+
+  // ── --update 增量升级模式（对齐 speccore：刷新已生成的规则到 CLI 当前版本）──
   if (opts.update) {
-    lines.push('', '  已收到 --update：init 是幂等的，重复执行即更新骨架与工具规则，无需 --update 参数。');
+    const targets = resolveUpdateTargets(cfg.projectRoot, opts.tools);
+    if (targets.length === 0) {
+      lines.push(
+        '',
+        '  🔄 --update：未发现已生成的工具规则文件。',
+        `     先用 taskq init --tools ${known.join('/')} 生成，再升级；或直接 init（幂等）重新生成。`
+      );
+    } else {
+      const rels = targets.map((t) => writeToolRules(cfg.projectRoot, t));
+      lines.push(
+        '',
+        `  🔄 已刷新 ${targets.length} 个宿主规则文件至 v${readVersion()}：`,
+        ...rels.map((r) => `     ${r}`)
+      );
+    }
+    if (unknownTools.length > 0) {
+      lines.push('', `  ⚠️ 暂不支持的工具：${unknownTools.join(', ')}（支持：${known.join('/')}）`);
+    }
+    return lines.join('\n');
+  }
+
+  // ── 常规模式：--tools 生成宿主 AI 接力规则文件 ──
+  if (opts.tools && opts.tools.length > 0) {
+    for (const tool of opts.tools) {
+      if (!known.includes(tool)) {
+        lines.push('', `  ⚠️ 暂不支持的工具：${tool}（支持：${known.join('/')}）`);
+        continue;
+      }
+      const rel = writeToolRules(cfg.projectRoot, tool);
+      lines.push('', `  ✅ 已生成 ${tool} 的宿主接力规则：${rel}（重复执行 init 即刷新）`);
+    }
   }
   return lines.join('\n');
 }

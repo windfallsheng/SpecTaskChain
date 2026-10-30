@@ -55,9 +55,14 @@ function main(): void {
 
   try {
     switch (cmd) {
-      case 'init':
-        output = initCommand(cwd, { tools: flag('--tools'), update: hasFlag('--update') });
+      case 'init': {
+        const toolsRaw = flag('--tools') || '';
+        output = initCommand(cwd, {
+          tools: toolsRaw.split(',').map((s) => s.trim()).filter(Boolean),
+          update: hasFlag('--update'),
+        });
         break;
+      }
       case 'new': {
         const goal = rest.filter((a) => !a.startsWith('--') && !['--name', '--type', '--group'].includes(a) && (rest.indexOf(a) === 0 || !rest[rest.indexOf(a) - 1].startsWith('--'))).join(' ');
         output = newCommand(cfg, {
