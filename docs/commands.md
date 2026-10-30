@@ -12,6 +12,36 @@ queue/.taskchain/state.json     ← 状态文件
 queue/.taskchain/TASK_TYPES/    ← 自定义类型目录
 ```
 
+```
+taskq init [--tools 工具名]
+```
+
+| 参数 | 说明 |
+| :--- | :--- |
+| `--tools 工具名` | 生成宿主 AI 接力规则文件（教宿主如何读队列、执行 [TASKQ_PROMPT]、按退出码接力）。重复执行即刷新规则内容 |
+
+> 无 `--update` 参数：init 本身幂等，**重复执行即更新**骨架与工具规则，无需显式 update。
+
+### 示例
+
+```bash
+taskq init                        # 只建骨架
+taskq init --tools qoder          # 骨架 + .qoder/rules/taskq-relay.md
+taskq init --tools claude         # 骨架 + CLAUDE.md 追加接力协议块
+taskq init --tools qoder          # 再跑一次 = 刷新规则文件（幂等更新）
+```
+
+### 工具 → 规则文件映射
+
+| 工具 | 规则文件 | 写入方式 |
+| :--- | :--- | :--- |
+| qoder | `.qoder/rules/taskq-relay.md` | 独立文件 |
+| claude | `CLAUDE.md` | 追加锚点块（已有内容保留） |
+| cursor | `.cursor/rules/taskq-relay.md` | 独立文件 |
+| windsurf | `.windsurf/rules/taskq-relay.md` | 独立文件 |
+| trae | `.trae/rules/taskq-relay.md` | 独立文件 |
+| codex | `AGENTS.md` | 追加锚点块（已有内容保留） |
+
 ## taskq new
 
 建任务或模块子任务。**恒定 draft 骨架起步**：goal 填入你的原话，output/acceptance 留空，`draft: true`。

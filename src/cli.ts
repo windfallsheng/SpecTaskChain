@@ -56,7 +56,7 @@ function main(): void {
   try {
     switch (cmd) {
       case 'init':
-        output = initCommand(cwd, { tools: flag('--tools') });
+        output = initCommand(cwd, { tools: flag('--tools'), update: hasFlag('--update') });
         break;
       case 'new': {
         const goal = rest.filter((a) => !a.startsWith('--') && !['--name', '--type', '--group'].includes(a) && (rest.indexOf(a) === 0 || !rest[rest.indexOf(a) - 1].startsWith('--'))).join(' ');

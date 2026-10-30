@@ -279,15 +279,48 @@ describe('版本事实源与 init 工具参数', () => {
     expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('initCommand 带 --tools 不静默吞参数，输出工具无关说明', () => {
+  it('initCommand 带 --tools 不静默吞参数，生成规则并明示路径', () => {
     const out = initCommand(makeCfg().projectRoot, { tools: 'qoder' });
-    expect(out).toContain('--tools qoder');
-    expect(out).toContain('工具无关');
+    expect(out).toContain('已生成 qoder');
+    expect(out).toContain('taskq-relay.md');
   });
 
   it('initCommand 不带 --tools 不出现该说明（原输出不受影响）', () => {
     const out = initCommand(makeCfg().projectRoot);
     expect(out).not.toContain('工具无关');
     expect(out).toContain('Chain = 接力（relay），不是依赖（dependency）。');
+  });
+
+  it('initCommand --tools qoder 生成 .qoder/rules/taskq-relay.md（真实产出）', () => {
+    const root = makeCfg().projectRoot;
+    const out = initCommand(root, { tools: 'qoder' });
+    expect(out).toContain('taskq-relay.md');
+    const p = join(root, '.qoder', 'rules', 'taskq-relay.md');
+    expect(existsSync(p)).toBe(true);
+    expect(readFileSync(p, 'utf-8')).toContain('接力协议');
+    expect(readFileSync(p, 'utf-8')).toContain('[TASKQ_PROMPT]');
+  });
+
+  it('initCommand --tools claude 追加锚点块且重复执行不重复', () => {
+    const root = makeCfg().projectRoot;
+    writeFileSync(join(root, 'CLAUDE.md'), '# 项目说明\n\n现有内容\n', 'utf-8');
+    initCommand(root, { tools: 'claude' });
+    initCommand(root, { tools: 'claude' });
+    const content = readFileSync(join(root, 'CLAUDE.md'), 'utf-8');
+    expect(content.split('## taskq 接力协议').length - 1).toBe(1);
+    expect(content).toContain('现有内容');
+  });
+
+  it('initCommand 未知工具报警告不落盘', () => {
+    const root = makeCfg().projectRoot;
+    const out = initCommand(root, { tools: 'nope' });
+    expect(out).toContain('暂不支持');
+    expect(existsSync(join(root, '.nope'))).toBe(false);
+  });
+
+  it('initCommand --update 回应幂等语义而非静默吞掉', () => {
+    const out = initCommand(makeCfg().projectRoot, { update: true });
+    expect(out).toContain('幂等');
+    expect(out).toContain('--update');
   });
 });

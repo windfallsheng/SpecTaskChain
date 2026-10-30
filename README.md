@@ -23,7 +23,7 @@ npm install -g spec-taskchain
 ## 快速开始
 
 ```bash
-taskq init                                          # 初始化队列骨架（queue/ + .taskchain/）
+taskq init --tools qoder                             # 初始化骨架 + 生成宿主工具接力规则（幂等，重复执行即更新）
 taskq new "写三篇迁移文档" --type doc                # 建任务：落盘 draft 骨架，AI 生成规格草案
 taskq clarify --task 01-task-01                     # 体检单个任务（三必填齐了没有、有没有模糊词）
 taskq run                                           # 无人值守接力：输出下一任务的完整 prompt
@@ -37,7 +37,7 @@ taskq ask "看下进度"                                 # 口语入口
 
 | 命令 | 说明 |
 | :--- | :--- |
-| `taskq init` | 初始化队列骨架（幂等） |
+| `taskq init [--tools 工具名]` | 初始化队列骨架（幂等，重复执行即更新）+ 可选生成宿主工具接力规则（qoder/claude/cursor/windsurf/trae/codex） |
 | `taskq new <描述> [--type 类型] [--group 模块名] [--draft]` | 建任务/模块子任务（恒定 draft 骨架起步） |
 | `taskq clarify [--task ID] [--file 路径] [--chain]` | 随叫随到的体检（四入口） |
 | `taskq run [--skip-draft]` | 无人值守接力执行（输出下一任务 prompt + 退出码） |
