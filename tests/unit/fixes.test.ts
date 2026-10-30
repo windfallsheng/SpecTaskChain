@@ -134,7 +134,7 @@ describe('taskq new：任务 ID 碰撞拒绝覆盖', () => {
     // 编号取最大+1：新任务是 02-task-01，原 01-task-01 不被覆盖
     expect(out).toContain('02-task-01');
     expect(readFileSync(join(dir, 'SPEC.md'), 'utf-8')).toBe('原文件内容');
-    expect(readFileSync(join(cfg.queueDir, 'tasks', '02-task-01', 'SPEC.md'), 'utf-8')).toContain('新任务');
+    expect(readFileSync(join(cfg.queueDir, 'batch-001', '02-task-01', 'SPEC.md'), 'utf-8')).toContain('新任务');
   });
 
   it('序号取最大值 +1，删除中间任务不撞号覆盖', () => {

@@ -1,6 +1,6 @@
 // 任务规格（SPEC.md）：frontmatter 承载机器检查项（三必填），正文承载 AI 阅读项
 // 设计原则：轻而有骨——frontmatter 三必填（goal/output/acceptance），正文自由
-import { readFileSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
 import { join, basename } from 'path';
 
 export interface ArtifactRule {
@@ -24,6 +24,10 @@ export interface TaskSpec {
   acceptance: AcceptanceSpec; // 验收（三必填之一，规格驱动队列的命根子）
   dependsOn: string[];    // 可选依赖：少数任务声明才拓扑排序
   draft: boolean;         // 规格未澄清/未补全标记
+  createdAt?: string;     // 创建日期（created-at；new 落盘，手工建的任务以目录出生时间兜底）
+  priority?: string;      // 优先级（P0/P1/P2 或自由值；筛选与展示）
+  tags?: string[];        // 标签（自由关键词；跨批次按主题筛选）
+  estimate?: number;      // 预估工时（小时；report/status 汇总）
   body: string;           // 正文全文（自由表达，执行时全文注入）
 }
 
@@ -174,6 +178,14 @@ export function buildSpec(id: string, dir: string, data: Record<string, any>, bo
     acceptance: { artifacts, checks, review: String(acceptance.review || data.review || '') },
     dependsOn: Array.isArray(data['depends-on']) ? data['depends-on'].map(String) : [],
     draft: data.draft === true || data.draft === 'true',
+    createdAt: data['created-at'] ? String(data['created-at']) : data.createdAt ? String(data.createdAt) : undefined,
+    priority: data.priority ? String(data.priority) : undefined,
+    tags: Array.isArray(data.tags)
+      ? data.tags.map(String)
+      : data.tags
+        ? String(data.tags).split(/[,，]/).map((s) => s.trim()).filter(Boolean)
+        : undefined,
+    estimate: data.estimate !== undefined && data.estimate !== '' && !isNaN(Number(data.estimate)) ? Number(data.estimate) : undefined,
     body,
   };
 }
@@ -185,7 +197,17 @@ export function readSpec(dir: string, defaultType = 'general'): TaskSpec | null 
     const content = readFileSync(specPath, 'utf-8');
     const { data, body } = parseFrontmatter(content);
     const id = basename(dir) || dir;
-    return buildSpec(id, dir, data, body, defaultType);
+    const spec = buildSpec(id, dir, data, body, defaultType);
+    // 手工搭棚子的任务没写 created-at → 目录出生时间兜底（git checkout/mv 不动 birthtime）
+    if (!spec.createdAt) {
+      try {
+        const st = statSync(dir);
+        spec.createdAt = new Date(st.birthtimeMs || st.mtimeMs).toISOString().slice(0, 10);
+      } catch {
+        // 读不到就留空，不影响队列运行
+      }
+    }
+    return spec;
   } catch {
     return null;
   }
@@ -199,12 +221,20 @@ function foldScalar(s: string): string {
 /** 生成 SPEC.md 文件内容（frontmatter + 正文） */
 export function renderSpec(spec: {
   type?: string; goal: string; output: string; acceptance: AcceptanceSpec; dependsOn?: string[]; draft?: boolean; body?: string; name?: string;
+  createdAt?: string; priority?: string; tags?: string[]; estimate?: number;
 }): string {
   const lines: string[] = ['---'];
   lines.push(`type: ${spec.type || 'general'}`);
   if (spec.name && spec.name.trim()) lines.push(`name: ${foldScalar(spec.name)}`);
   lines.push(`goal: ${foldScalar(spec.goal)}`);
   lines.push(`output: ${foldScalar(spec.output)}`);
+  if (spec.createdAt) lines.push(`created-at: ${spec.createdAt}`);
+  if (spec.priority) lines.push(`priority: ${spec.priority}`);
+  if (spec.tags && spec.tags.length) {
+    lines.push('tags:');
+    spec.tags.forEach((t) => lines.push(`  - ${t}`));
+  }
+  if (spec.estimate !== undefined) lines.push(`estimate: ${spec.estimate}`);
   if (spec.dependsOn && spec.dependsOn.length) {
     lines.push('depends-on:');
     spec.dependsOn.forEach((d) => lines.push(`  - ${d}`));

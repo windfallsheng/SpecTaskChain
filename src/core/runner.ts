@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TaskQConfig, readState, writeState } from './config';
-import { scanQueue, buildExecutionSequence, findNextPending, ExecutableTask } from './queue';
+import { scanQueue, buildExecutionSequence, findNextPending, selectBatch, latestBatchId, ExecutableTask } from './queue';
 import { resolveTaskType } from './task-type';
 import { resolveReferences } from './references';
 
@@ -152,9 +152,19 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
  * - failed 任务 → 需人工介入（协议拦截，不无限重试）
  * - 有 doing 任务未完成（未超时）→ 有执行者在干活，不重复领取
  */
-export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean } = {}): NextTaskInfo {
+export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?: string } = {}): NextTaskInfo {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
-  const sequence = buildExecutionSequence(queue);
+  // 批次聚焦：缺省 = 最新批次（新批次插队先跑）；--batch batch-NNN 指定老批次；--batch all 全批次
+  const view = selectBatch(queue, opts.batch);
+  if (!view) {
+    return {
+      task: null as any,
+      prompt: '',
+      exitCode: 12,
+      summary: `❌ 批次「${opts.batch}」不存在。现有批次：${queue.batches.map((b) => b.id).join('、') || '无（队列为空）'}`,
+    };
+  }
+  const sequence = buildExecutionSequence(view);
   const state = readState(cfg);
   const next = findNextPending(sequence, state);
   if (!next) {
@@ -222,16 +232,21 @@ export function markTaskState(cfg: TaskQConfig, taskId: string, status: 'doing' 
   writeState(cfg, state);
 }
 
-/** 队列进度摘要（status 命令） */
-export function queueSummary(cfg: TaskQConfig): string {
+/** 队列进度摘要（status 命令）：批次聚焦同 relayNext，多批次时先亮批次行 */
+export function queueSummary(cfg: TaskQConfig, opts: { batch?: string } = {}): string {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
-  const sequence = buildExecutionSequence(queue);
+  const view = selectBatch(queue, opts.batch) || queue;
+  const sequence = buildExecutionSequence(view);
   const state = readState(cfg);
   const done = sequence.filter((e) => state[e.spec.id]?.status === 'done').length;
   const failed = sequence.filter((e) => state[e.spec.id]?.status === 'failed').length;
   const doing = sequence.filter((e) => state[e.spec.id]?.status === 'doing').length;
   const todo = sequence.length - done - failed - doing;
   const lines: string[] = [];
+  if (queue.batches.length > 1 || opts.batch) {
+    const focus = opts.batch === 'all' ? '全部批次' : opts.batch || latestBatchId(queue.batches);
+    lines.push(`批次：${queue.batches.map((b) => b.id).join('、')}（当前聚焦 ${focus}）`);
+  }
   lines.push(`队列总览：共 ${sequence.length} 个任务`);
   lines.push(`  ✅ done: ${done}   ⛔ failed: ${failed}   ▶ doing: ${doing}   ⏳ todo: ${todo}`);
   if (queue.modules.length) {

@@ -1,30 +1,91 @@
-// taskq list：队列清单——有哪些任务、各自状态
+// taskq list：队列清单——有哪些批次、批次内有哪些任务、各自状态与元数据
+// 筛选三扇窗：--batch 聚焦批次 / --status 按状态 / --type 按类型（AND 组合，业务挑任务的视角）
 import { TaskQConfig, readState } from '../core/config';
-import { scanQueue } from '../core/queue';
+import { scanQueue, latestBatchId } from '../core/queue';
+import { TaskSpec } from '../core/task-spec';
 
-export function listCommand(cfg: TaskQConfig): string {
+export interface ListOptions {
+  batch?: string;  // 聚焦批次（batch-NNN / tasks / all；缺省 = 全批次展示）
+  status?: string; // 按状态筛选（todo/doing/done/failed/draft）
+  type?: string;   // 按类型筛选（doc/script/data…）
+}
+
+/** 任务行徽章：优先级 ⚑P1 / 预估工时 ⏱8h（有才显示，不添噪） */
+function badges(t: TaskSpec): string {
+  const parts: string[] = [];
+  if (t.priority) parts.push(`⚑${t.priority}`);
+  if (t.estimate !== undefined) parts.push(`⏱${t.estimate}h`);
+  return parts.length ? ` ${parts.join(' ')}` : '';
+}
+
+export function listCommand(cfg: TaskQConfig, opts: ListOptions = {}): string {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   const state = readState(cfg);
-  const lines: string[] = [];
   if (!queue.tasks.length && !queue.modules.length) {
     return '队列还是空的。先建任务：taskq new "任务描述"';
   }
-  lines.push('队列清单：');
-  lines.push('');
-  for (const t of queue.tasks) {
-    const s = state[t.id];
-    const icon = s?.status === 'done' ? '✅' : s?.status === 'failed' ? '⛔' : s?.status === 'doing' ? '▶' : '⏳';
-    const shown = t.name ? `「${t.name}」` : '';
-    lines.push(`  ${icon} ${t.id}${shown} [${t.type}] ${t.goal.slice(0, 40)}`);
-  }
-  for (const m of queue.modules) {
-    lines.push(`  📦 ${m.id}（任务模块，共享 spec）`);
-    for (const sub of m.subtasks) {
-      const s = state[sub.id];
-      const icon = s?.status === 'done' ? '✅' : s?.status === 'failed' ? '⛔' : s?.status === 'doing' ? '▶' : '⏳';
-      const shown = sub.name ? `「${sub.name}」` : '';
-      lines.push(`      ${icon} ${sub.id}${shown} [${sub.type}] ${sub.goal.slice(0, 36)}`);
+  // 批次聚焦（不存在报错，与 new/run 口径一致）
+  let batches = queue.batches;
+  if (opts.batch && opts.batch !== 'all') {
+    batches = queue.batches.filter((b) => b.id === opts.batch);
+    if (!batches.length) {
+      return `❌ 批次「${opts.batch}」不存在。现有批次：${queue.batches.map((b) => b.id).join('、')}`;
     }
+  }
+  // 状态/类型筛选（AND 组合）
+  const match = (t: TaskSpec): boolean => {
+    if (opts.status && (state[t.id]?.status || 'todo') !== opts.status) return false;
+    if (opts.type && t.type !== opts.type) return false;
+    return true;
+  };
+  const lines: string[] = ['队列清单：'];
+  const latest = latestBatchId(queue.batches);
+  let hitCount = 0;
+  let total = 0;
+  for (const b of batches) {
+    const batchTitle = `📦 批次 ${b.id}${b.name ? `「${b.name}」` : ''}${b.id === latest ? ' ← 当前批次（新任务落这里，run 默认跑这里）' : ''}`;
+    const batchLines: string[] = [];
+    for (const t of b.tasks) {
+      total++;
+      if (!match(t)) continue;
+      hitCount++;
+      const s = state[t.id];
+      const icon = s?.status === 'done' ? '✅' : s?.status === 'failed' ? '⛔' : s?.status === 'doing' ? '▶' : '⏳';
+      const shown = t.name ? `「${t.name}」` : '';
+      batchLines.push(`  ${icon} ${t.id}${shown} [${t.type}]${badges(t)} ${t.goal.slice(0, 40)}`);
+    }
+    for (const m of b.modules) {
+      const subLines: string[] = [];
+      for (const sub of m.subtasks) {
+        total++;
+        if (!match(sub)) continue;
+        hitCount++;
+        const s = state[sub.id];
+        const icon = s?.status === 'done' ? '✅' : s?.status === 'failed' ? '⛔' : s?.status === 'doing' ? '▶' : '⏳';
+        const shown = sub.name ? `「${sub.name}」` : '';
+        subLines.push(`      ${icon} ${sub.id}${shown} [${sub.type}]${badges(sub)} ${sub.goal.slice(0, 36)}`);
+      }
+      if (subLines.length) {
+        const modLabel = m.name ? `${m.id}「${m.name}」` : m.id;
+        batchLines.push(`  📦 ${modLabel}（任务模块，共享 spec）`);
+        batchLines.push(...subLines);
+      }
+    }
+    if (batchLines.length) {
+      lines.push('');
+      lines.push(batchTitle);
+      if (b.purpose) lines.push(`   ${b.purpose}`);
+      lines.push(...batchLines);
+    }
+  }
+  if (!hitCount) {
+    const cond = [
+      opts.batch && opts.batch !== 'all' ? `批次=${opts.batch}` : '',
+      opts.status ? `状态=${opts.status}` : '',
+      opts.type ? `类型=${opts.type}` : '',
+    ].filter(Boolean).join('、');
+    lines.push('');
+    lines.push(`筛选无结果（${cond}）：${total} 个任务中无一命中。换个条件，或 taskq list 看全貌。`);
   }
   return lines.join('\n');
 }

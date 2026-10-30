@@ -4,6 +4,7 @@ import { relayNext, NextTaskInfo } from '../core/runner';
 
 export interface RunOptions {
   skipDraft?: boolean; // 强跑 draft 任务
+  batch?: string;      // 批次聚焦（batch-NNN / tasks / all；缺省 = 最新批次）
 }
 
 /** 渲染接力结果（CLI 输出文本；退出码由调用方传播：0 清空 / 10 接力 / 12 draft 拦截） */
@@ -19,5 +20,5 @@ export function renderRunResult(result: NextTaskInfo): string {
 }
 
 export function runCommand(cfg: TaskQConfig, opts: RunOptions): string {
-  return renderRunResult(relayNext(cfg, { skipDraft: opts.skipDraft }));
+  return renderRunResult(relayNext(cfg, { skipDraft: opts.skipDraft, batch: opts.batch }));
 }

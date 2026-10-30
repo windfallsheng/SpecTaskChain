@@ -15,9 +15,11 @@ export function resolveConfig(cwd = process.cwd()): TaskQConfig {
   return { projectRoot: cwd, queueDir, metaDir: join(queueDir, '.taskchain') };
 }
 
-/** 初始化队列骨架：queue/tasks/ + .taskchain/TASK_TYPES/ + state.json（幂等） */
+/** 初始化队列骨架：queue/batch-001/ + .taskchain/TASK_TYPES/ + state.json（幂等）
+ * 批次目录 = 「一次要做的所有任务」的容器，下次要用再建下一个（batch-002、batch-003…）
+ * 已存在旧式 tasks/ 的老项目不动它（扫描兼容为第 0 批） */
 export function ensureStructure(cfg: TaskQConfig): void {
-  mkdirSync(join(cfg.queueDir, 'tasks'), { recursive: true });
+  mkdirSync(join(cfg.queueDir, 'batch-001'), { recursive: true });
   mkdirSync(join(cfg.metaDir, 'TASK_TYPES'), { recursive: true });
   const statePath = join(cfg.metaDir, 'state.json');
   if (!existsSync(statePath)) {

@@ -36,26 +36,54 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '写迁移文档', name: '迁移文档', draft: true });
     expect(out).toContain('qianyiwendang');
-    const spec = readFileSync(join(root, 'queue', 'tasks', '01-qianyiwendang', 'SPEC.md'), 'utf-8');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', '01-qianyiwendang', 'SPEC.md'), 'utf-8');
     expect(spec).toContain('name: 迁移文档');
   });
 
   it('--name 英文 → 目录直接用，不重复写 name', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     newCommand(cfg(root), { goal: '写文档', name: 'migration-docs', draft: true });
-    const spec = readFileSync(join(root, 'queue', 'tasks', '01-migration-docs', 'SPEC.md'), 'utf-8');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', '01-migration-docs', 'SPEC.md'), 'utf-8');
     expect(spec).not.toContain('name:');
   });
 
-  it('--group 中文 → 模块目录全拼 + CONSTRAINTS.md 带显示名', () => {
+  it('--group 中文 → 模块目录 module- 前缀 + CONSTRAINTS.md 带显示名', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '实现登录', group: '认证模块', name: '登录接口', draft: true });
-    expect(out).toContain('renzhengmokuai');
+    expect(out).toContain('module-renzhengmokuai');
     expect(out).toContain('认证模块');
-    const constraints = readFileSync(join(root, 'queue', 'tasks', 'renzhengmokuai', 'CONSTRAINTS.md'), 'utf-8');
+    const constraints = readFileSync(join(root, 'queue', 'batch-001', 'module-renzhengmokuai', 'CONSTRAINTS.md'), 'utf-8');
     expect(constraints).toContain('认证模块');
-    const subSpec = readFileSync(join(root, 'queue', 'tasks', 'renzhengmokuai', '01-denglujiekou', 'SPEC.md'), 'utf-8');
+    const subSpec = readFileSync(join(root, 'queue', 'batch-001', 'module-renzhengmokuai', '01-denglujiekou', 'SPEC.md'), 'utf-8');
     expect(subSpec).toContain('name: 登录接口');
+  });
+
+  it('--group 已带 module- 前缀 → 不叠加', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    const out = newCommand(cfg(root), { goal: '实现登录', group: 'module-auth', name: '登录', draft: true });
+    expect(out).toContain('module-auth');
+    expect(out).not.toContain('module-module-auth');
+  });
+
+  it('无 --name → 从 goal 提取语义 slug（中文全拼）', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    const out = newCommand(cfg(root), { goal: '整理会议纪要', draft: true });
+    expect(out).toContain('zhenglihuiyijiyao');
+  });
+
+  it('goal 提不出语义 → 兜底任务类型键，不落 task 哑名', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    const out = newCommand(cfg(root), { goal: '！！！', type: 'script', draft: true });
+    expect(out).toContain('「01-script」');
+    expect(out).not.toContain('「01-task');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', '01-script', 'SPEC.md'), 'utf-8');
+    expect(spec).toContain('goal: ！！！');
+  });
+
+  it('无 --name → goal 含拉丁片段优先提取', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    const out = newCommand(cfg(root), { goal: '写 MySQL 慢查询分析脚本', draft: true });
+    expect(out).toContain('mysql');
   });
 
   it('AI 草案指令含起名要求', () => {

@@ -23,18 +23,20 @@ function helpText(): string {
     '用法：taskq <命令> [参数]',
     '',
     '命令：',
-    '  init                      初始化队列骨架（queue/ + .taskchain/）',
-    '  new <描述> [--type doc] [--group 模块名]   建任务（对话成规格：AI 生成草案，你确认）',
+    '  init                      初始化队列骨架（queue/batch-001/ + .taskchain/）',
+    '  new <描述> [--type doc] [--group 模块名] [--batch 批次] [--priority P1] [--tags 客户,线上] [--estimate 8]   建任务（对话成规格：AI 生成草案，你确认）',
     '  split <文档或文字> [--group 模块名] [--type 类型]   文档拆任务（只出 goal+初步内容，不碰验收三态）',
     '  clarify [--task ID] [--file 路径] [--chain]  随叫随到的体检（写完查 / 建链查 / 翻车查）',
-    '  run [--skip-draft]        无人值守接力执行（输出下一任务 prompt）',
+    '  run [--skip-draft] [--batch 批次|all]  无人值守接力执行（默认最新批次；输出下一任务 prompt）',
     '  done <task-id> [--verdict "pass ..."]       验收登记（产物/断言/评审三态门禁）',
-    '  list                      队列清单',
-    '  status [--panel]          队列总览（--panel 生成 HTML 可视化面板）',
-    '  report                    队列报告（执行留痕，有账可查）',
+    '  list [--batch 批次] [--status todo|done|failed] [--type doc]   队列清单（按批次分组，三扇窗筛选）',
+    '  status [--panel] [--batch 批次|all]  队列总览（默认聚焦最新批次；--panel 生成 HTML 可视化面板）',
+    '  report [--batch 批次] [--status 状态] [--type 类型]   队列报告（执行留痕，有账可查）',
     '  ask "自然语言"            口语入口（「建个任务…」「澄清…」「跑队列」）',
     '',
     '理念：Spec 保证「做对」（验收先行），Chain 保证「干完」（接力 + 断点续跑）。',
+    '批次：batch-NNN = 一次要做的全部任务。下次要用再建新批次（mkdir queue/batch-002），新任务自动落最新批次，run 默认跑最新批次。',
+    '元数据（都可选，不写照样跑）：任务 SPEC.md 的 created-at/priority/tags/estimate；批次 BATCH.md 与模块 CONSTRAINTS.md 顶部的 name/purpose/created-at。',
     '规格轻而有骨：frontmatter 三必填（goal/output/acceptance）+ 正文自由。',
   ].join('\n');
 }
@@ -64,13 +66,19 @@ function main(): void {
         break;
       }
       case 'new': {
-        const goal = rest.filter((a) => !a.startsWith('--') && !['--name', '--type', '--group'].includes(a) && (rest.indexOf(a) === 0 || !rest[rest.indexOf(a) - 1].startsWith('--'))).join(' ');
+        const paramFlags = ['--name', '--type', '--group', '--priority', '--tags', '--estimate'];
+        const goal = rest.filter((a) => !a.startsWith('--') && !paramFlags.includes(a) && (rest.indexOf(a) === 0 || !rest[rest.indexOf(a) - 1].startsWith('--'))).join(' ');
+        const estRaw = flag('--estimate');
+        const est = estRaw !== undefined ? Number(estRaw) : undefined;
         output = newCommand(cfg, {
           goal: goal || '未命名任务',
           name: flag('--name'),
           type: flag('--type'),
           draft: hasFlag('--draft'),
           group: flag('--group'),
+          priority: flag('--priority'),
+          tags: flag('--tags')?.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+          estimate: est !== undefined && !isNaN(est) ? est : undefined,
         });
         // 不带 --draft 时请求宿主 AI 接力生成规格草案——与 split 同协议：退出码 10
         if (!hasFlag('--draft')) process.exitCode = 10;
@@ -92,7 +100,7 @@ function main(): void {
         break;
       case 'run': {
         // 退出码协议：0 队列清空 / 10 接力（宿主 AI 执行）/ 12 拦截（draft/模块缺共享 spec/doing 进行中/failed 需人工介入）——直接传播给宿主
-        const result = relayNext(cfg, { skipDraft: hasFlag('--skip-draft') });
+        const result = relayNext(cfg, { skipDraft: hasFlag('--skip-draft'), batch: flag('--batch') });
         output = renderRunResult(result);
         process.exitCode = result.exitCode;
         break;
@@ -103,13 +111,13 @@ function main(): void {
         break;
       }
       case 'list':
-        output = listCommand(cfg);
+        output = listCommand(cfg, { batch: flag('--batch'), status: flag('--status'), type: flag('--type') });
         break;
       case 'status':
-        output = statusCommand(cfg, { panel: hasFlag('--panel') });
+        output = statusCommand(cfg, { panel: hasFlag('--panel'), batch: flag('--batch') });
         break;
       case 'report':
-        output = reportCommand(cfg);
+        output = reportCommand(cfg, { batch: flag('--batch'), status: flag('--status'), type: flag('--type') });
         break;
       case 'ask': {
         const input = rest.join(' ');

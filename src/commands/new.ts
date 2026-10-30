@@ -8,12 +8,17 @@ import { TaskQConfig } from '../core/config';
 import { renderSpec } from '../core/task-spec';
 import { resolveTaskType, listBuiltinTypes } from '../core/task-type';
 import { toSlug, hasCJK } from '../core/task-naming';
+import { scanQueue, latestBatchId, QueueScan } from '../core/queue';
 
 export interface NewOptions {
   name?: string;    // 任务名（英文直接作 slug；中文转全拼作 slug + 原样作显示名）
   type?: string;    // 任务类型
   draft?: boolean;  // 是否直接落盘 draft（跳过 AI 草案生成）
   group?: string;   // 任务模块（共享 spec 的院落；同样走 slug 化）
+  batch?: string;   // 目标批次（batch-NNN / tasks；缺省 = 最新批次）
+  priority?: string; // 优先级（P0/P1/P2 或自由值）
+  tags?: string[];   // 标签（自由关键词；跨批次按主题筛选）
+  estimate?: number; // 预估工时（小时）
   goal: string;     // 任务描述（用户原话）
 }
 
@@ -29,27 +34,53 @@ function nextSeq(nums: number[]): string {
   return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0');
 }
 
-/** 目录编号提取：目录名前缀数字（01-auth → 1），非数字目录忽略 */
-function dirNums(dirs: string[]): number[] {
-  return dirs.map((d) => parseInt(d.split('-')[0], 10)).filter((n) => !isNaN(n));
+/** 全局编号池：跨批次扫描目录名（目录存在即占号，含空目录与模块子目录）——任务 ID 全局唯一（state.json 键不撞）的前提 */
+function allDirNums(cfg: TaskQConfig, queue: QueueScan): number[] {
+  const { readdirSync, statSync } = require('fs');
+  const nums: number[] = [];
+  for (const b of queue.batches) {
+    const area = join(cfg.queueDir, b.id);
+    for (const e of readdirSync(area)) {
+      const full = join(area, e);
+      if (!statSync(full).isDirectory()) continue;
+      nums.push(parseInt(e.split('-')[0], 10));
+      // 模块目录：其子任务目录同样占号
+      for (const s of readdirSync(full)) {
+        if (statSync(join(full, s)).isDirectory()) nums.push(parseInt(s.split('-')[0], 10));
+      }
+    }
+  }
+  return nums.filter((n) => !isNaN(n));
 }
 
 export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
-  const tasksDir = join(cfg.queueDir, 'tasks');
+  // 批次定位：--batch 指定；缺省 = 最新批次（新任务落最新批次，插队先跑）；
+  // 旧式 tasks 是只读兼容容器（第 0 批），不在默认落点内——新任务一律进 batch-NNN，无则建 batch-001
+  const queue = scanQueue(cfg.queueDir, cfg.metaDir);
+  if (opts.batch && !queue.batches.some((b) => b.id === opts.batch)) {
+    return `❌ 批次「${opts.batch}」不存在。现有批次：${queue.batches.map((b) => b.id).join('、') || '无（首个批次将自动创建 batch-001）'}`;
+  }
+  const batchId = opts.batch || latestBatchId(queue.batches.filter((b) => b.id !== 'tasks')) || 'batch-001';
+  const tasksDir = join(cfg.queueDir, batchId);
   mkdirSync(tasksDir, { recursive: true });
   const { readdirSync, statSync, existsSync } = require('fs');
-  const existing = readdirSync(tasksDir).filter((e: string) => statSync(join(tasksDir, e)).isDirectory());
   const typeDef = resolveTaskType(cfg.metaDir, opts.type || 'general');
-  const seq = nextSeq(dirNums(existing));
-  const slug = opts.name ? toSlug(opts.name) : `task-${seq}`;
+  // 编号全局递增：跨所有批次（含模块子任务）取最大 +1——每批次从 01 重新编号会让 state 键撞车
+  const seq = nextSeq(allDirNums(cfg, queue));
+  // 命名仪式：--name 优先；无 --name 从 goal 提取语义 slug（「整理会议纪要」→ zhenglihuiyijiyao）；
+  // goal 提不出语义时用任务类型键兜底（doc/script/data…，类型即任务形态）——绝不落 'task' 哑名
+  const goalSlug = toSlug(opts.goal);
+  const slug = opts.name ? toSlug(opts.name) : goalSlug === 'task' ? typeDef.name : goalSlug;
   const id = `${seq}-${slug}`;
   const shownName = opts.name ? displayName(opts.name, slug) : undefined;
 
   if (opts.group) {
     // 任务模块：共享 spec 的院落——CONSTRAINTS.md + 第三层子任务（模块名同样 slug 化）
+    // 命名仪式：CLI 生成时模块目录带 module- 前缀（一眼区分于任务目录）；用户手工建的模块目录不受此约束（扫描只认结构）；已带前缀不叠加
     const groupSlug = toSlug(opts.group);
+    const modName = groupSlug.startsWith('module-') ? groupSlug : `module-${groupSlug}`;
     const groupShown = displayName(opts.group, groupSlug);
-    const modDir = join(tasksDir, groupSlug);
+    const modDir = join(tasksDir, modName);
     mkdirSync(modDir, { recursive: true });
     const constraintsPath = join(modDir, 'CONSTRAINTS.md');
     if (!existsSync(constraintsPath)) {
@@ -59,11 +90,11 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
         'utf-8'
       );
     }
-    const subs = readdirSync(modDir).filter((s: string) => statSync(join(modDir, s)).isDirectory());
-    const subId = nextSeq(dirNums(subs));
+    // 模块内子任务同样用全局编号：与顶层任务分属不同调用，各自取最大 +1 不撞；跨层撞车由 clarify 体检拦截
+    const subId = nextSeq(allDirNums(cfg, queue));
     const subDir = join(modDir, `${subId}-${slug}`);
     if (existsSync(subDir)) {
-      return `❌ 子任务目录「${groupSlug}/${subId}-${slug}」已存在（名称撞车）。换一个 --name，或先处理现有子任务目录。`;
+      return `❌ 子任务目录「${modName}/${subId}-${slug}」已存在（名称撞车）。换一个 --name，或先处理现有子任务目录。`;
     }
     mkdirSync(subDir, { recursive: true });
     writeFileSync(
@@ -74,15 +105,19 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
         goal: opts.goal,
         output: opts.draft ? typeDef.outputDir : '',
         acceptance: { artifacts: [], checks: [], review: '' },
+        createdAt: new Date().toISOString().slice(0, 10),
+        priority: opts.priority,
+        tags: opts.tags,
+        estimate: opts.estimate,
         draft: true,
         body: opts.goal,
       }),
       'utf-8'
     );
     const lines = [
-      `✅ 子任务已入模块「${groupSlug}」${groupShown ? `（${groupShown}）` : ''}（任务模块 = 共享 spec 的院落）`,
+      `✅ 子任务已入模块「${modName}」${groupShown ? `（${groupShown}）` : ''} → 批次 ${batchId}（任务模块 = 共享 spec 的院落）`,
       '',
-      `  子任务：${groupSlug}/${subId}-${slug}`,
+      `  子任务：${modName}/${subId}-${slug}`,
       `  公共约束：${constraintsPath}（每次执行子任务前重读）`,
       '',
     ];
@@ -107,6 +142,10 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
       goal: opts.goal,
       output: opts.draft ? typeDef.outputDir : '',
       acceptance: { artifacts: [], checks: [], review: '' },
+      createdAt: new Date().toISOString().slice(0, 10),
+      priority: opts.priority,
+      tags: opts.tags,
+      estimate: opts.estimate,
       // 新任务恒定 draft 骨架起步：补全规格（clarify 通过）前，taskq run 拦截（--skip-draft 可强跑）
       draft: true,
       body: opts.goal,
@@ -114,7 +153,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
     'utf-8'
   );
   const lines = [
-    `✅ 任务「${id}」${shownName ? `（${shownName}）` : ''}已入队（draft 态：等待规格补全，补全前 taskq run 会拦截）`,
+    `✅ 任务「${id}」${shownName ? `（${shownName}）` : ''}已入队 → 批次 ${batchId}（draft 态：等待规格补全，补全前 taskq run 会拦截）`,
     '',
     `  类型：${opts.type || 'general'}（${typeDef.code ? '代码任务' : '非代码任务'})`,
     `  可用类型：${listBuiltinTypes().join(' / ')}，自定义类型放 .taskchain/TASK_TYPES/{类型}.md`,

@@ -1,21 +1,71 @@
 // 队列扫描：队列是第一公民——一堆任务，无人值守接力完成
-// 扫描两层：顶层任务（tasks/{id}/）+ 模块子任务（tasks/{module}/{sub}/，第三层天然不被误扫为独立任务）
+// 扫描结构：批次目录（batch-{NN}/，一次要做的事；旧式 tasks/ 兼容过渡）→ 顶层任务（{id}/）+ 模块子任务（{module}/{sub}/）
 import { readdirSync, existsSync, statSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { TaskSpec, readSpec } from './task-spec';
+import { TaskSpec, readSpec, parseFrontmatter } from './task-spec';
 import { resolveTaskType } from './task-type';
 
 export interface ModuleInfo {
   id: string;               // 模块 ID
   constraintsPath: string;  // 公共约束文件（00-specs 的等价物：CONSTRAINTS.md）
-  constraints: string;      // 约束内容（每次执行子任务前重读）
+  constraints: string;      // 约束内容（每次执行子任务前重读；已剥离 frontmatter 元数据）
   constraintsMissing: boolean; // CONSTRAINTS.md 缺失或为空——子任务执行会被阻塞，绝不静默裸奔
+  name?: string;            // 显示名（CONSTRAINTS.md frontmatter name）
+  purpose?: string;         // 模块意图（CONSTRAINTS.md frontmatter purpose）
+  createdAt?: string;       // 创建日期（frontmatter created-at；缺失以目录出生时间兜底）
   subtasks: TaskSpec[];     // 第三层子任务
 }
 
+/** 批次/模块元数据（可选：不写照样跑——集市哲学，扫描只认结构） */
+export interface BatchMeta {
+  name?: string;      // 显示名（BATCH.md frontmatter name）
+  purpose?: string;   // 批次意图（BATCH.md frontmatter purpose 或正文首行）
+  createdAt?: string; // 创建日期（BATCH.md frontmatter created-at；缺失以目录出生时间兜底）
+}
+
+/** 批次：一次要做的任务集合（「下次要用，还会再创建」的最小单元） */
+export interface BatchInfo extends BatchMeta {
+  id: string;            // 批次 ID（batch-001 / 旧式 tasks）
+  tasks: TaskSpec[];     // 批次内顶层任务
+  modules: ModuleInfo[]; // 批次内任务模块
+}
+
 export interface QueueScan {
-  tasks: TaskSpec[];      // 顶层平铺任务
-  modules: ModuleInfo[];  // 任务模块（共享 spec 的院落）
+  tasks: TaskSpec[];      // 全批次合并：顶层平铺任务（兼容旧消费方）
+  modules: ModuleInfo[];  // 全批次合并：任务模块（共享 spec 的院落）
+  batches: BatchInfo[];   // 批次分组（每次要做的一件事）
+}
+
+/** 批次键：batch-NN 按数字排序（batch-10 排在 batch-9 后）；旧式 tasks 视为第 0 批（迁移前的过渡形态，兼容期继续工作） */
+export function batchKey(id: string): number {
+  if (id === 'tasks') return 0;
+  const m = id.match(/^batch-(\d+)$/);
+  if (m) return parseInt(m[1], 10);
+  return -1;
+}
+
+/** 最新批次（batch-NN 数字序最大者；无 batch-* 时旧式 tasks 兜底） */
+export function latestBatchId(batches: BatchInfo[]): string | null {
+  if (!batches.length) return null;
+  return [...batches].sort((a, b) => batchKey(a.id) - batchKey(b.id))[batches.length - 1].id;
+}
+
+/**
+ * 批次视图：batchId 指定 → 只取该批次（不存在返回 null，由调用方报错）；
+ * 缺省 → 最新批次（新批次插队先跑，老批次 --batch 手动指定）；'all' → 全批次平铺
+ * 返回体 tasks/modules 只含选中批次；batches 保留全量批次目录（供展示）
+ */
+export function selectBatch(queue: QueueScan, batchId?: string): QueueScan | null {
+  if (batchId && batchId !== 'all') {
+    const b = queue.batches.find((x) => x.id === batchId);
+    return b ? { tasks: b.tasks, modules: b.modules, batches: queue.batches } : null;
+  }
+  if (!batchId) {
+    const latest = latestBatchId(queue.batches);
+    const b = queue.batches.find((x) => x.id === latest);
+    return b ? { tasks: b.tasks, modules: b.modules, batches: queue.batches } : { tasks: [], modules: [], batches: [] };
+  }
+  return queue;
 }
 
 /** 判断目录是否是任务目录（含 SPEC.md）或模块目录（含子任务） */
@@ -23,15 +73,40 @@ function isTaskDir(dir: string): boolean {
   return existsSync(join(dir, 'SPEC.md'));
 }
 
-/** 扫描队列：任务平铺 + 模块聚合（共享 spec 时保留任务模块概念） */
-export function scanQueue(queueDir: string, metaDir: string): QueueScan {
-  const tasksDir = join(queueDir, 'tasks');
-  if (!existsSync(tasksDir)) return { tasks: [], modules: [] };
+/** 目录出生时间（birthtime，git checkout/mv 不动）：元数据缺失时的创建时间兜底 */
+function dirBirth(dir: string): string | undefined {
+  try {
+    const st = statSync(dir);
+    return new Date(st.birthtimeMs || st.mtimeMs).toISOString().slice(0, 10);
+  } catch {
+    return undefined;
+  }
+}
+
+/** 读批次元数据（batch-NNN/BATCH.md，可选：不写照样跑——扫描只认结构） */
+function readBatchMeta(areaDir: string): BatchMeta {
+  const p = join(areaDir, 'BATCH.md');
+  if (!existsSync(p)) return {};
+  try {
+    const { data, body } = parseFrontmatter(readFileSync(p, 'utf-8'));
+    return {
+      name: data.name ? String(data.name) : undefined,
+      purpose: data.purpose ? String(data.purpose) : body.trim().slice(0, 80) || undefined,
+      createdAt: data['created-at'] ? String(data['created-at']) : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/** 扫描一个批次区域（batch-001/ 或旧式 tasks/）：顶层任务 + 模块聚合 */
+function scanTaskArea(areaDir: string, metaDir: string): { tasks: TaskSpec[]; modules: ModuleInfo[] } {
   const tasks: TaskSpec[] = [];
   const modules: ModuleInfo[] = [];
-  const entries = readdirSync(tasksDir).sort();
+  if (!existsSync(areaDir)) return { tasks, modules };
+  const entries = readdirSync(areaDir).sort();
   for (const entry of entries) {
-    const full = join(tasksDir, entry);
+    const full = join(areaDir, entry);
     if (!statSync(full).isDirectory()) continue;
     if (isTaskDir(full)) {
       const spec = readSpec(full, 'general');
@@ -48,13 +123,48 @@ export function scanQueue(queueDir: string, metaDir: string): QueueScan {
         if (spec) subtaskSpecs.push(spec);
       }
       const hasConstraints = existsSync(constraintsPath);
-      const constraints = hasConstraints ? readFileSync(constraintsPath, 'utf-8') : '';
+      const constraintsRaw = hasConstraints ? readFileSync(constraintsPath, 'utf-8') : '';
+      // frontmatter 剥离：元数据（name/purpose/created-at）不注入 prompt，约束正文才是共享 spec
+      const { data: cMeta, body: cBody } = parseFrontmatter(constraintsRaw);
+      const constraints = (cBody || constraintsRaw).trim();
       // 共享 spec 缺失或为空 → 标记：执行子任务时阻塞（绝不静默裸奔）
-      const constraintsMissing = !hasConstraints || !constraints.trim();
-      modules.push({ id: entry, constraintsPath, constraints, constraintsMissing, subtasks: subtaskSpecs });
+      const constraintsMissing = !hasConstraints || !constraints;
+      modules.push({
+        id: entry,
+        constraintsPath,
+        constraints,
+        constraintsMissing,
+        name: cMeta.name ? String(cMeta.name) : undefined,
+        purpose: cMeta.purpose ? String(cMeta.purpose) : undefined,
+        createdAt: cMeta['created-at'] ? String(cMeta['created-at']) : dirBirth(full),
+        subtasks: subtaskSpecs,
+      });
     }
   }
   return { tasks, modules };
+}
+
+/** 扫描队列：所有批次（batch-{NN}）+ 旧式 tasks 兼容（迁移前继续工作） */
+export function scanQueue(queueDir: string, metaDir: string): QueueScan {
+  const batches: BatchInfo[] = [];
+  if (!existsSync(queueDir)) return { tasks: [], modules: [], batches };
+  const entries = readdirSync(queueDir).sort();
+  for (const entry of entries) {
+    if (entry.startsWith('.')) continue;
+    const full = join(queueDir, entry);
+    if (!statSync(full).isDirectory()) continue;
+    // 批次目录：batch-{NN}；旧式 tasks 目录作为过渡批次继续识别
+    if (entry !== 'tasks' && !/^batch-\d+$/.test(entry)) continue;
+    const { tasks, modules } = scanTaskArea(full, metaDir);
+    const meta = readBatchMeta(full);
+    if (!meta.createdAt) meta.createdAt = dirBirth(full);
+    batches.push({ id: entry, ...meta, tasks, modules });
+  }
+  return {
+    tasks: batches.flatMap((b) => b.tasks),
+    modules: batches.flatMap((b) => b.modules),
+    batches,
+  };
 }
 
 /**
