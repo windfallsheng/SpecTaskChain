@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TaskQConfig, readState, writeState } from './config';
-import { scanQueue, buildExecutionSequence, findNextPending, selectBatch, latestBatchId, DOING_TIMEOUT_MS, ExecutableTask } from './queue';
+import { scanQueue, buildExecutionSequence, filterExecutionSequence, findNextPending, selectBatch, latestBatchId, DOING_TIMEOUT_MS, ExecutableTask } from './queue';
 import { resolveTaskType } from './task-type';
 import { resolveReferences } from './references';
 import { renderEffectiveRoleSegment, resolveEffectiveRole } from './task-role';
@@ -170,7 +170,7 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
  * - failed 任务 → 需人工介入（协议拦截，不无限重试）
  * - 有 doing 任务未完成（未超时）→ 有执行者在干活，不重复领取
  */
-export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?: string } = {}): NextTaskInfo {
+export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?: string; task?: string; module?: string } = {}): NextTaskInfo {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   // 批次聚焦：缺省 = 最新批次（新批次插队先跑）；--batch batch-NNN 指定老批次；--batch all 全批次
   const view = selectBatch(queue, opts.batch);
@@ -182,7 +182,19 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
       summary: `❌ 批次「${opts.batch}」不存在。现有批次：${queue.batches.map((b) => b.id).join('、') || '无（队列为空）'}`,
     };
   }
-  const sequence = buildExecutionSequence(view);
+  // 定向执行：--task 单任务 / --module 模块全部子任务（无匹配时明确报错，不悄悄跑全量）
+  let sequence = buildExecutionSequence(view);
+  if (opts.task || opts.module) {
+    sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module });
+    if (sequence.length === 0) {
+      return {
+        task: null as any,
+        prompt: '',
+        exitCode: 12,
+        summary: `❌ 定向目标不存在：${opts.task ? `任务「${opts.task}」` : `模块「${opts.module}」`}。用 taskq list 查 ID（任务如 34-cshidaima，模块如 module-yingxiaomokuai）`,
+      };
+    }
+  }
   const state = readState(cfg);
   const next = findNextPending(sequence, state);
   if (!next) {
@@ -289,7 +301,7 @@ export interface BatchRelayResult {
 }
 
 /** 领取一批任务（默认 3 个）：按执行序列取连续未完成任务，批内逐个渲染 prompt + 占位 doing */
-export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?: number; skipDraft?: boolean } = {}): BatchRelayResult {
+export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?: number; skipDraft?: boolean; task?: string; module?: string } = {}): BatchRelayResult {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   const view = selectBatch(queue, opts.batch);
   if (!view) {
@@ -300,7 +312,18 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
       summary: `❌ 批次「${opts.batch}」不存在。现有批次：${queue.batches.map((b) => b.id).join('、') || '无（队列为空）'}`,
     };
   }
-  const sequence = buildExecutionSequence(view);
+  let sequence = buildExecutionSequence(view);
+  if (opts.task || opts.module) {
+    sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module });
+    if (sequence.length === 0) {
+      return {
+        tasks: [],
+        prompts: [],
+        exitCode: 12,
+        summary: `❌ 定向目标不存在：${opts.task ? `任务「${opts.task}」` : `模块「${opts.module}」`}。用 taskq list 查 ID（任务如 34-cshidaima，模块如 module-yingxiaomokuai）`,
+      };
+    }
+  }
   const state = readState(cfg);
   const batchSize = Math.max(1, opts.batchSize || 3);
   const taken: ExecutableTask[] = [];

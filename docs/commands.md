@@ -91,8 +91,10 @@ taskq clarify [--task 任务ID] [--file SPEC路径] [--chain]
 无人值守接力执行。输出第一个未完成任务的完整执行 prompt，**通过退出码与宿主 AI 对话**：
 
 ```
-taskq run [--skip-draft]
+taskq run [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
 ```
+
+- `--task ID` / `--module 模块ID`：定向执行（只跑单任务或单模块全部子任务），无匹配时明确报错不悄悄跑全量。
 
 | 退出码 | 含义 | 后续动作 |
 | :--- | :--- | :--- |
@@ -107,11 +109,12 @@ taskq run [--skip-draft]
 批次接力：一次领取 N 个任务的完整 prompt，宿主 AI 逐个开子任务执行、逐个 `done` 登记、连续取批。批内各 prompt 独立自包含（不用 subagent 也成立），拦停语义同 run。
 
 ```
-taskq execute [--batch-size N] [--skip-draft] [--batch 批次|all]
+taskq execute [--batch-size N] [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
 ```
 
 - `--batch-size N`：每批领取的任务数（默认 3）。单 prompt 有防爆限额，批总长可控。
 - `--batch 批次|all`：聚焦指定批次或全队列（默认最新批次）。
+- `--task ID` / `--module 模块ID`：定向执行（同 run）。
 - 批内首个任务占位 doing 后即拦停：同批内已有任务处于 doing（上一棒未登记）时，先停——账本只能有一个执行者。
 
 ## taskq split
@@ -140,8 +143,19 @@ taskq done <task-id> [--verdict "pass|fail + 评审结论"]
 
 - 三态全过 → 登记 done，提示 `taskq run` 接力下一个。
 - 任一不过 → attempts +1（上限 3），修正产出后重试。
-- 达上限 → 标记 failed；`taskq run` 返回 `12` 拦停（修复是人工介入的活，机器不假装能自动修复）——修复产出后重新 `taskq done` 验收，或手动把 state.json 中该任务状态改为 todo 整单重跑。
+- 达上限 → 标记 failed；`taskq run` 返回 `12` 拦停（修复是人工介入的活，机器不假装能自动修复）——修复产出后重新 `taskq done` 验收，或 `taskq reset <id>` 复位整单重跑。
 - 未找到任务 → 报错并提示 `taskq list`。
+
+## taskq reset
+
+重跑复位：状态回 todo + attempts 清零。软复位留痕保留（重跑 = 基于现有内容调整补充），`--hard` 连 PROGRESS.md 留痕清空（重跑 = 从头再来）。产物文件两种模式都不删，重跑时按规格自然覆盖。
+
+```
+taskq reset <task-id|模块ID|batch-NNN|--all> [--hard]
+```
+
+- 目标支持：单任务 ID / 模块 ID（全部子任务）/ 批次 / `--all` 全队列。
+- 复位后提示对应的 `taskq run --task/--module/--batch` 定向接力命令。
 
 ## taskq list
 

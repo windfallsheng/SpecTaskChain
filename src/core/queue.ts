@@ -219,6 +219,13 @@ export function buildExecutionSequence(queue: QueueScan): ExecutableTask[] {
   return sorted;
 }
 
+/** 定向筛选：--task 单任务 / --module 模块全部子任务；都不传返回原序列 */
+export function filterExecutionSequence(sequence: ExecutableTask[], opts: { task?: string; module?: string }): ExecutableTask[] {
+  if (opts.task) return sequence.filter((e) => e.spec.id === opts.task);
+  if (opts.module) return sequence.filter((e) => e.module?.id === opts.module);
+  return sequence;
+}
+
 /** doing 占位超过该时长视为孤儿任务（执行者已中断），允许重拾 */
 export const DOING_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 

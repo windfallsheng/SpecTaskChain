@@ -8,6 +8,7 @@ import { newCommand } from './commands/new';
 import { clarifyCommand } from './commands/clarify';
 import { renderRunResult, runCommand } from './commands/run';
 import { doneCommand } from './commands/done';
+import { resetCommand } from './commands/reset';
 import { statusCommand } from './commands/status';
 import { reportCommand } from './commands/report';
 import { listCommand } from './commands/list';
@@ -29,8 +30,9 @@ function helpText(): string {
     '  split <文档或文字> [--group 模块名] [--type 类型]   文档拆任务（只出 goal+初步内 容，不碰验收三态）',
     '  pipeline <描述或文件或目录> [--type 类型] [--group 模块] [--batch 批次] [--batch-size N]   端到端流水线（素材进→拆分→澄清→执行→收尾）',
     '  clarify [--task ID] [--file 路径] [--chain]  随叫随到的体检（写完查 / 建链查 / 翻车查）',
-    '  run [--skip-draft] [--batch 批次|all]  无人值守接力执行（默认最新批次；输出下一任务 prompt）',
-    '  execute [--batch-size N] [--skip-draft] [--batch 批次|all]  批次接力（一次领取 N 个任务的完整 prompt，默认 3；拦停语义同 run）',
+    '  run [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]  无人值守接力执行（默认最新批次；输出下一任务 prompt）',
+    '  execute [--batch-size N] [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]  批次接力（一次领取 N 个任务的完整 prompt，默认 3；拦停语义同 run）',
+    '  reset <task-id|模块ID|batch-NNN|--all> [--hard]  重跑复位（状态回 todo + attempts 清零；软复位留痕保留=调整补充，--hard 清留痕=从头再来）',
     '  done <task-id> [--verdict "pass ..."]       验收登记（产物/断言/评审三态门禁）',
     '  list [--batch 批次] [--status todo|done|failed] [--type doc]   队列清单（按批次分组，三扇窗筛选）',
     '  status [--panel] [--batch 批次|all]  队列总览（默认聚焦最新批次；--panel 生成 HTML 可视化面板）',
@@ -105,7 +107,7 @@ function main(): void {
         break;
       case 'run': {
         // 退出码协议：0 队列清空 / 10 接力（宿主 AI 执行）/ 12 拦截（draft/模块缺共享 spec/doing 进行中/failed 需人工介入）——直接传播给宿主
-        const result = relayNext(cfg, { skipDraft: hasFlag('--skip-draft'), batch: flag('--batch') });
+        const result = relayNext(cfg, { skipDraft: hasFlag('--skip-draft'), batch: flag('--batch'), task: flag('--task'), module: flag('--module') });
         output = renderRunResult(result);
         process.exitCode = result.exitCode;
         break;
@@ -114,7 +116,7 @@ function main(): void {
         // 批次接力：run 的批量化——一次领取 N 个任务的完整 prompt（默认 3），拦停语义与 run 一致
         const sizeRaw = flag('--batch-size');
         const size = sizeRaw !== undefined ? Number(sizeRaw) : undefined;
-        const result = batchRelay(cfg, { batch: flag('--batch'), batchSize: size !== undefined && !isNaN(size) ? size : 3, skipDraft: hasFlag('--skip-draft') });
+        const result = batchRelay(cfg, { batch: flag('--batch'), batchSize: size !== undefined && !isNaN(size) ? size : 3, skipDraft: hasFlag('--skip-draft'), task: flag('--task'), module: flag('--module') });
         output = renderBatchResult(result);
         process.exitCode = result.exitCode;
         break;
@@ -130,6 +132,16 @@ function main(): void {
         const size = sizeRaw !== undefined ? Number(sizeRaw) : undefined;
         output = pipelineCommand(cfg, input, { batch: flag('--batch'), batchSize: size !== undefined && !isNaN(size) ? size : undefined, type: flag('--type'), group: flag('--group') });
         process.exitCode = 10;
+        break;
+      }
+      case 'reset': {
+        // 重跑复位：目标 = 任务ID / 模块ID / batch-NNN / --all；--hard 连留痕 PROGRESS.md 清空
+        const target = rest.find((a) => !a.startsWith('--')) || '';
+        if (!target) {
+          output = '用法：taskq reset <task-id|模块ID|batch-NNN|--all> [--hard]\n\n示例：\n  taskq reset 34-cshidaima\n  taskq reset module-yingxiaomokuai\n  taskq reset --all --hard';
+          break;
+        }
+        output = resetCommand(cfg, target, { hard: hasFlag('--hard') });
         break;
       }
       case 'done': {

@@ -53,8 +53,9 @@ taskq ask "看下进度"                                 # 口语入口
 | `taskq new <描述> [--type 类型] [--group 模块名] [--batch 批次] [--priority P1] [--tags a,b] [--estimate 8] [--draft]` | 建任务/模块子任务（恒定 draft 骨架起步） |
 | `taskq clarify [--task ID] [--file 路径] [--chain]` | 随叫随到的体检（四入口） |
 | `taskq pipeline <描述或文件或目录> [--type 类型] [--group 模块] [--batch 批次] [--batch-size N]` | 端到端流水线（素材进→拆分→澄清→执行→收尾，编排归宿主 AI） |
-| `taskq run [--skip-draft] [--batch 批次\|all]` | 无人值守接力执行（默认聚焦最新批次；输出下一任务 prompt + 退出码） |
-| `taskq execute [--batch-size N] [--skip-draft] [--batch 批次\|all]` | 批次接力（一次领取 N 个任务的完整 prompt，默认 3；拦停语义同 run） |
+| `taskq run [--skip-draft] [--batch 批次\|all] [--task ID] [--module 模块ID]` | 无人值守接力执行（默认聚焦最新批次；输出下一任务 prompt + 退出码；--task/--module 定向单任务/单模块） |
+| `taskq execute [--batch-size N] [--skip-draft] [--batch 批次\|all] [--task ID] [--module 模块ID]` | 批次接力（一次领取 N 个任务的完整 prompt，默认 3；拦停语义同 run） |
+| `taskq reset <task-id|模块ID|batch-NNN|--all> [--hard]` | 重跑复位（状态回 todo；软复位留痕保留=调整补充，--hard 清留痕=从头再来） |
 | `taskq done <task-id> [--verdict "..."]` | 验收登记（产物/断言/评审三态门禁） |
 | `taskq list [--batch 批次] [--status 状态] [--type 类型]` | 队列清单（按批次分组，三扇窗筛选） |
 | `taskq status [--panel] [--batch 批次\|all]` | 队列总览（--panel 生成 HTML 可视化面板） |

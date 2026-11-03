@@ -13,6 +13,7 @@ import { renderSpec, parseFrontmatter, buildSpec } from '../../src/core/task-spe
 import { generatePanelHtml } from '../../src/core/panel';
 import { readVersion } from '../../src/core/version';
 import { initCommand } from '../../src/commands/init';
+import { resetCommand } from '../../src/commands/reset';
 
 /** 造一个干净的临时队列配置 */
 function makeCfg(): TaskQConfig {
@@ -391,5 +392,117 @@ describe('版本事实源与 init 工具参数', () => {
     initCommand(root, { tools: ['qoder', 'cursor'] });
     const out = initCommand(root, { update: true, tools: ['qoder'] });
     expect(out).toContain('已刷新 1 个');
+  });
+});
+
+describe('0.2.5：定向执行 + 重跑复位 + SKILL 矩阵', () => {
+  /** batch-001 布局造顶层任务 */
+  function makeBatchTask(cfg: TaskQConfig, id: string): string {
+    const dir = join(cfg.queueDir, 'batch-001', id);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SPEC.md'),
+      `---\ntype: doc\ngoal: 写文档\noutput: docs/\nacceptance:\n  artifacts:\n    - path: docs/${id}.md\n---\n写文档`,
+      'utf-8'
+    );
+    return dir;
+  }
+
+  /** batch-001 布局造模块（带共享约束）+ 子任务 */
+  function makeBatchModule(cfg: TaskQConfig, moduleId: string, subIds: string[]): string {
+    const moduleDir = join(cfg.queueDir, 'batch-001', moduleId);
+    for (const sub of subIds) {
+      const subDir = join(moduleDir, sub);
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(
+        join(subDir, 'SPEC.md'),
+        `---\ntype: feature\ngoal: 实现子任务\noutput: src/\nacceptance:\n  artifacts:\n    - path: src/${sub}.ts\n---\n子任务正文`,
+        'utf-8'
+      );
+    }
+    writeFileSync(join(moduleDir, 'CONSTRAINTS.md'), '模块公共约束：统一使用 TypeScript。', 'utf-8');
+    return moduleDir;
+  }
+
+  it('run --task 只领指定任务；不存在的 ID 明确报错不悄悄跑全量', () => {
+    const cfg = makeCfg();
+    makeBatchTask(cfg, '01-a');
+    makeBatchTask(cfg, '02-b');
+    const r = relayNext(cfg, { task: '02-b' });
+    expect(r.exitCode).toBe(10);
+    expect(r.task.spec.id).toBe('02-b');
+    const miss = relayNext(cfg, { task: '99-none' });
+    expect(miss.exitCode).toBe(12);
+    expect(miss.summary).toContain('定向目标不存在');
+  });
+
+  it('run --module 领模块全部子任务（序列被过滤到只剩该模块）', () => {
+    const cfg = makeCfg();
+    makeBatchTask(cfg, '01-a');
+    makeBatchModule(cfg, 'module-demo', ['01-sub', '02-sub']);
+    const r = relayNext(cfg, { module: 'module-demo' });
+    expect(r.exitCode).toBe(10);
+    expect(r.task.spec.id).toBe('01-sub'); // 顶层任务被过滤掉，首个 pending 是模块子任务
+  });
+
+  it('reset 软复位：状态回 todo + attempts 清零，留痕保留（重跑=调整补充）', () => {
+    const cfg = makeCfg();
+    const dir = makeBatchTask(cfg, '01-a');
+    writeState(cfg, { '01-a': { status: 'done', attempts: 2, verdict: 'pass 已验收' } });
+    writeFileSync(join(dir, 'PROGRESS.md'), '阶段性留痕：已完成初稿');
+    const out = resetCommand(cfg, '01-a');
+    expect(out).toContain('已复位 1 个任务');
+    expect(out).toContain('调整补充');
+    const st = readState(cfg)['01-a'];
+    expect(st.status).toBe('todo');
+    expect(st.attempts).toBe(0);
+    expect(existsSync(join(dir, 'PROGRESS.md'))).toBe(true);
+  });
+
+  it('reset --hard：连留痕 PROGRESS.md 清空（重跑=从头再来）', () => {
+    const cfg = makeCfg();
+    const dir = makeBatchTask(cfg, '01-a');
+    writeState(cfg, { '01-a': { status: 'failed', attempts: 1 } });
+    writeFileSync(join(dir, 'PROGRESS.md'), '旧的阶段留痕');
+    const out = resetCommand(cfg, '01-a', { hard: true });
+    expect(out).toContain('从头再来');
+    expect(existsSync(join(dir, 'PROGRESS.md'))).toBe(false);
+    expect(readState(cfg)['01-a'].status).toBe('todo');
+  });
+
+  it('reset 支持模块定向与 --all；目标不存在报错', () => {
+    const cfg = makeCfg();
+    makeBatchTask(cfg, '01-a');
+    makeBatchModule(cfg, 'module-demo', ['01-sub', '02-sub']);
+    writeState(cfg, { '01-a': { status: 'done', attempts: 1 }, '01-sub': { status: 'done', attempts: 1 }, '02-sub': { status: 'done', attempts: 1 } });
+    expect(resetCommand(cfg, 'module-demo')).toContain('已复位 2 个任务');
+    expect(readState(cfg)['01-sub'].status).toBe('todo');
+    expect(readState(cfg)['01-a'].status).toBe('done'); // 模块外任务不动
+    expect(resetCommand(cfg, '--all')).toContain('已复位 3 个任务');
+    expect(resetCommand(cfg, '99-none')).toContain('找不到');
+  });
+
+  it('init --tools qoder 生成 5 个 SKILL：1 总入口 + 4 高频专属（下拉矩阵）', () => {
+    const root = makeCfg().projectRoot;
+    initCommand(root, { tools: ['qoder'] });
+    const base = join(root, '.agents', 'skills');
+    for (const name of ['taskq', 'taskq-new', 'taskq-run', 'taskq-clarify', 'taskq-done']) {
+      expect(existsSync(join(base, name, 'SKILL.md'))).toBe(true);
+    }
+    const sub = readFileSync(join(base, 'taskq-run', 'SKILL.md'), 'utf-8');
+    expect(sub).toContain('name: taskq-run');
+    expect(sub).toContain('taskq run');
+    expect(sub).toContain('--task <id>');
+    const main = readFileSync(join(base, 'taskq', 'SKILL.md'), 'utf-8');
+    expect(main).toContain('/taskq-new /taskq-run /taskq-clarify /taskq-done');
+    expect(main).toContain('taskq reset');
+  });
+
+  it('init --tools windsurf 不生成 SKILL（无 skill 约定，规则照常）', () => {
+    const root = makeCfg().projectRoot;
+    const out = initCommand(root, { tools: ['windsurf'] });
+    expect(out).toContain('windsurf');
+    expect(out).not.toContain('SKILL 入口');
+    expect(existsSync(join(root, '.windsurf', 'rules', 'taskq-relay.md'))).toBe(true);
   });
 });
