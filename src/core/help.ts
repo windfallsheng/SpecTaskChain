@@ -9,6 +9,7 @@ export function helpText(): string {
     '',
     '用法：taskq <命令> [参数]',
     '  引导页：taskq help guide ｜ 单命令详情：taskq help <命令>（如 taskq help run）',
+    '  HTML 引导页：queue/GUIDE.html（init 自动生成；taskq help guide --html 随时再生成）',
     '',
     '命令：',
     '  init                      初始化队列骨架（queue/batch-001/ + .taskchain/）',
@@ -272,6 +273,7 @@ export function guideText(): string {
     '  Q: 素材文档放哪？',
     '  A: 自组织区（如 materials/），taskq split materials/x.md 或 taskq pipeline materials/ 指过去。',
     '',
+    'HTML 引导页：queue/GUIDE.html（init 自动生成，taskq help guide --html 再生成）',
     '完整文档：https://github.com/windfallsheng/SpecTaskChain/tree/main/docs',
   ].join('\n');
 }

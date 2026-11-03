@@ -3,6 +3,7 @@
 import { resolveConfig, ensureStructure } from './core/config';
 import { readVersion } from './core/version';
 import { helpText, guideText, commandDetail } from './core/help';
+import { generateGuideHtml } from './core/guide';
 import { relayNext, batchRelay, renderBatchResult } from './core/runner';
 import { initCommand } from './commands/init';
 import { newCommand } from './commands/new';
@@ -145,8 +146,11 @@ function main(): void {
       case '--help':
       case '-h':
       case undefined: {
-        // help [guide|<命令>]：总览 → 引导页 / 单命令详情
-        if (rest[0] === 'guide') output = guideText();
+        // help [guide|<命令>] [--html]：总览 → 引导页 / 单命令详情；--html 生成 HTML 引导页
+        if (hasFlag('--html')) {
+          const guidePath = generateGuideHtml(cfg);
+          output = `📖 HTML 引导页已生成：${guidePath}\n\n双击打开即可看：上手三步 + 目录布局 + 命令速查 + 常见问题。`;
+        } else if (rest[0] === 'guide') output = guideText();
         else if (rest[0] && !rest[0].startsWith('-')) output = commandDetail(rest[0]);
         else output = helpText();
         break;

@@ -1,0 +1,144 @@
+// HTML 引导页：init 自动生成 + taskq help guide --html 随时再生成
+// 与 PANEL.html 同院（queue/ 下），同一视觉语言；单文件零依赖，双击即看
+import { writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { TaskQConfig } from './config';
+import { readVersion } from './version';
+
+/** HTML 转义：路径与版本来自环境（不受控），打开不执行注入内容 */
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+/** 命令速查表（网页两列版；终端全参数版见 taskq help） */
+const COMMANDS: Array<[string, string]> = [
+  ['init', '初始化队列骨架 + 宿主接力规则与 SKILL 入口'],
+  ['new', '建任务（对话成规格：AI 生成草案，你确认）'],
+  ['split', '文档拆任务（只出 goal，验收留到澄清点头）'],
+  ['pipeline', '端到端流水线（素材→拆分→澄清→执行→收尾）'],
+  ['clarify', '随叫随到的体检（写完查 / 建链查 / 翻车查）'],
+  ['run', '无人值守接力执行（断了接着跑，直到队列清空）'],
+  ['execute', '批次接力（一次领取 N 个任务的完整 prompt）'],
+  ['reset', '重跑复位（软 = 调整补充，--hard = 从头再来）'],
+  ['done', '验收登记（产物/断言/评审三态门禁）'],
+  ['list', '队列清单（按批次分组，三扇窗筛选）'],
+  ['status', '队列总览（--panel 生成 HTML 可视化面板）'],
+  ['report', '队列报告（执行留痕，有账可查）'],
+  ['ask', '口语入口（「建个任务…」「澄清…」「跑队列」）'],
+];
+
+/** 引导页 HTML（纯函数，可测） */
+export function guideHtml(cfg: Pick<TaskQConfig, 'queueDir'>): string {
+  const v = esc(readVersion());
+  const queueDir = esc(cfg.queueDir);
+  const time = new Date().toLocaleString('zh-CN');
+  const cmdRows = COMMANDS.map(([c, d]) => `<tr><td class="cmd">taskq ${c}</td><td>${d}</td></tr>`).join('');
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpecTaskChain 引导页</title>
+<style>
+body{font-family:'PingFang SC','Hiragino Sans GB',sans-serif;margin:40px auto;max-width:880px;padding:0 20px;color:#1e293b;background:#f8fafc;line-height:1.7}
+h1{font-size:28px;margin-bottom:2px}
+.sub{color:#64748b;font-size:13px;margin-bottom:8px}
+.slogan{color:#475569;font-size:14px;margin-bottom:28px;border-left:3px solid #3b82f6;padding-left:10px}
+h2{margin-top:34px;font-size:20px;border-bottom:2px solid #e2e8f0;padding-bottom:8px}
+h3{font-size:15px;margin:0 0 8px;color:#334155}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.step{background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;gap:12px;align-items:flex-start}
+.step .n{flex:none;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#22c55e);color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.step b{font-size:14px}
+.step p{margin:4px 0 0;font-size:13px;color:#64748b}
+.zone{background:#fff;border-radius:10px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin:10px 0}
+.zone ul{margin:4px 0;padding-left:20px;font-size:14px}
+.zone li{margin:3px 0}
+.zone p{margin:4px 0;font-size:14px}
+.zone .tip{font-size:12.5px;color:#64748b}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+th,td{padding:9px 12px;text-align:left;font-size:13.5px;border-bottom:1px solid #f1f5f9}
+th{background:#f1f5f9;color:#475569;font-weight:600}
+td.cmd{white-space:nowrap;font-family:'SF Mono',Menlo,monospace;font-size:12.5px;color:#1d4ed8;font-weight:600;width:150px}
+ul.concepts{padding-left:20px;font-size:14px}
+ul.concepts li{margin:5px 0}
+.faq{background:#fff;border-radius:10px;padding:6px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.faq p{margin:10px 0;font-size:14px}
+.faq b{color:#1d4ed8}
+footer{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:12.5px}
+</style>
+</head>
+<body>
+<h1>🧭 SpecTaskChain 引导页</h1>
+<div class="sub">队列：${queueDir} · v${v} · ${time}</div>
+<div class="slogan">Spec 保证「做对」（验收先行），Chain 保证「干完」（接力 + 断点续跑）。</div>
+
+<h2>上手三步</h2>
+<div class="steps">
+  <div class="step"><div class="n">1</div><div><b>taskq init</b><p>初始化队列骨架（已做可跳过）</p></div></div>
+  <div class="step"><div class="n">2</div><div><b>taskq new "任务描述" --type doc</b><p>建任务：AI 生成规格草案，你确认</p></div></div>
+  <div class="step"><div class="n">3</div><div><b>taskq clarify → taskq run → taskq done</b><p>澄清体检 → 无人值守接力 → 验收登记；循环 run 直到「队列已清空」，最后 taskq report 复盘</p></div></div>
+</div>
+
+<h2>项目目录布局（三类目录，各司其职）</h2>
+<div class="zone">
+  <h3>① 队列本体 —— taskq 唯一的管理区，其余目录一概不碰</h3>
+  <ul>
+    <li><b>queue/</b> — 批次 batch-NNN / 任务 {NN}-{slug}/SPEC.md / 模块 module-{slug}/</li>
+    <li><b>.taskchain/</b> — state.json 账本 + TASK_TYPES 类型 + ROLES 角色 + TEMPLATES 模板</li>
+  </ul>
+</div>
+<div class="zone">
+  <h3>② 产出落位 —— 按 --type 自动归位，目录按需出现</h3>
+  <table>
+    <thead><tr><th>任务类型</th><th>产出落位</th><th>任务类型</th><th>产出落位</th></tr></thead>
+    <tbody>
+      <tr><td>doc</td><td>docs/</td><td>research</td><td>research/</td></tr>
+      <tr><td>data</td><td>data/</td><td>presentation</td><td>presentation/</td></tr>
+      <tr><td>script</td><td>scripts/</td><td>feature | bugfix</td><td>src/</td></tr>
+      <tr><td>general（缺省）</td><td>outputs/</td><td>自定义类型</td><td>.taskchain/TASK_TYPES/{类型}.md 里 output-dir 可改</td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="zone">
+  <h3>③ 用户自组织区 —— 自由命名，taskq 不认识也不碰</h3>
+  <p><b>materials/</b> 素材（split/pipeline 入口）· <b>specs/</b> 手写规格 · <b>logs/</b> 日志 · …随你，素材文档指给 split / pipeline 即可</p>
+</div>
+
+<h2>命令速查</h2>
+<table>
+  <thead><tr><th>命令</th><th>作用</th></tr></thead>
+  <tbody>${cmdRows}</tbody>
+</table>
+
+<h2>核心概念</h2>
+<ul class="concepts">
+  <li><b>验收三态：</b>artifacts 产物（文件在不在）+ checks 断言（命令退出码非 0 不算完）+ review 评审（结论要覆盖）——缺一不算完</li>
+  <li><b>接力协议：</b>run 输出 [TASKQ_PROMPT] 块 + 退出码；10 接力执行 / 12 拦截 / 0 清空</li>
+  <li><b>批次聚焦：</b>新任务落最新批次，run/status 默认最新批次；--batch 点名，--batch all 全批次</li>
+  <li><b>断点续跑：</b>进度写 PROGRESS.md，换会话 run 自动注入留痕续做；doing 超 24h 自动重拾</li>
+  <li><b>失败重试：</b>attempts 上限 3 次，超限标记 failed 需人工介入（不无限重试）</li>
+  <li><b>执行角色：</b>type 管形态，role 管专业（内置 10 角色，自定义放 .taskchain/ROLES/）</li>
+</ul>
+
+<h2>常见问题</h2>
+<div class="faq">
+  <p><b>Q: 跑完任务多了个 docs/，能删吗？</b><br>A: 那是任务产出，验收产物门禁核对文件在不在——不需要再删。</p>
+  <p><b>Q: run 被拦截（退出码 12）怎么办？</b><br>A: 看拦截原因：draft 先 clarify 补全或 --skip-draft 强跑；模块缺共享 spec 先补 CONSTRAINTS.md；doing 有人干活等它 done；failed 修复后重新 done 验收。</p>
+  <p><b>Q: 换会话/换工具怎么接着跑？</b><br>A: 账本在文件里，不在任何 AI 的脑子里——taskq run 一执行即续跑（PROGRESS.md 留痕自动注入）。</p>
+  <p><b>Q: 想重跑某个任务？</b><br>A: taskq reset &lt;任务ID&gt;（软复位留痕保留 = 调整补充）；从头再来 taskq reset --all --hard。</p>
+  <p><b>Q: 素材文档放哪？</b><br>A: 自组织区（如 materials/），taskq split materials/x.md 或 taskq pipeline materials/ 指过去。</p>
+</div>
+
+<footer>完整文档：https://github.com/windfallsheng/SpecTaskChain/tree/main/docs · Chain = 接力（relay），不是依赖（dependency）。</footer>
+</body>
+</html>`;
+}
+
+/** 生成引导页到 queue/GUIDE.html（与 PANEL.html 同院），返回路径 */
+export function generateGuideHtml(cfg: Pick<TaskQConfig, 'queueDir'>): string {
+  const guidePath = join(cfg.queueDir, 'GUIDE.html');
+  mkdirSync(dirname(guidePath), { recursive: true });
+  writeFileSync(guidePath, guideHtml(cfg), 'utf-8');
+  return guidePath;
+}

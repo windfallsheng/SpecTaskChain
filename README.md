@@ -87,6 +87,8 @@ taskq 不接管你的项目——它只管理 `queue/`。项目里其余目录�
 
 三类目录各司其职的完整说明见 [docs/directory-layout.md](docs/directory-layout.md)。
 
+> 📖 想一眼看懂这些？`taskq init` 后双击 `queue/GUIDE.html`——上手三步 + 三类目录 + 命令速查 + 常见问题都在里面（`taskq help guide --html` 随时再生成）。
+
 ## 队列结构
 
 ```

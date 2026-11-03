@@ -1,6 +1,7 @@
 // taskq init：初始化队列骨架（幂等）+ 生成宿主工具接力规则；--update 增量升级（对齐 speccore 惯例）
 import { resolveConfig, ensureStructure } from '../core/config';
 import { readVersion } from '../core/version';
+import { generateGuideHtml } from '../core/guide';
 import { writeFileSync, mkdirSync, readFileSync, existsSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
 
@@ -97,6 +98,7 @@ function renderSkillFiles(tool: string): SkillFile[] {
       '',
       '## 输出标记处理',
       '',
+      '- `[TASKQ_GUIDE: <path>]` → 用 present_files 向用户展示该 HTML 引导页（init 输出中出现）',
       '- `[TASKQ_PROMPT]` … `[TASKQ_PROMPT_END]` → 按其中任务规格**立即执行**：产出写到指定路径，完成后 `taskq done <id> --verdict "pass 理由"`，同一会话继续 `taskq run` 接力下一个',
       '- `[TASKQ_SPEC_DRAFT]` → 按骨架写回 SPEC.md（frontmatter 三必填 goal/output/acceptance + 正文），写回后提醒用户 `taskq clarify --task <id>` 体检',
       '- `[TASKQ_PIPELINE]` … `[TASKQ_PIPELINE_END]` → 按剧本逐项执行',
@@ -240,8 +242,14 @@ function resolveUpdateTargets(projectRoot: string, tools?: string[]): string[] {
 export function initCommand(cwd: string, opts: InitOptions = {}): string {
   const cfg = resolveConfig(cwd);
   ensureStructure(cfg);
+  const guidePath = generateGuideHtml(cfg);
   const lines = [
     '✅ 队列骨架已就绪（SpecTaskChain）',
+    '',
+    `[TASKQ_GUIDE: ${guidePath}]`,
+    '',
+    '📖 HTML 引导页已生成（双击打开即看）：上手三步 + 目录布局 + 命令速查 + 常见问题',
+    `  ${guidePath}`,
     '',
     `  队列目录：${cfg.queueDir}`,
     '    batch-001/             ← 任务平铺（SPEC.md 三必填 + 正文自由）',

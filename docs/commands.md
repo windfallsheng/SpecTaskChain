@@ -197,3 +197,16 @@ taskq ask "出个报告"
 重跑说法识别：「重跑/重新执行/重做/重来/复位/重置」→ reset；「继续跑/接着跑/重新开始执行」→ run；「重新建个任务」→ new（互不误吞）。无目标时不猜只给用法。
 
 识别失败时输出可用命令与话术示例。识别到的意图路由：clarify / run / execute / pipeline / split / init / status / report / list / new / done / reset。
+
+## taskq help
+
+帮助与引导体系：总览 → 引导页 / 单命令详情 / HTML 引导页。
+
+```
+taskq help                 # 总览：命令表 + 目录布局 + 核心概念
+taskq help guide           # 引导页（上手三步 + 三类目录 + FAQ）
+taskq help <命令>          # 单命令详情（如 taskq help run）
+taskq help guide --html    # 生成 HTML 引导页 queue/GUIDE.html（双击即看）
+```
+
+> HTML 引导页 `queue/GUIDE.html`：`taskq init` 自动生成（输出含 `[TASKQ_GUIDE: <path>]` 标记，宿主 AI 展示给用户）；内容 = 上手三步 + 目录布局 + 命令速查 + 核心概念 + 常见问题，与 `taskq status --panel` 生成的 PANEL.html 同院。
