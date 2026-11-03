@@ -47,6 +47,8 @@ taskq init --update --tools qoder       # 只刷新 qoder 的规则文件
 | trae | `.trae/rules/taskq-relay.md` | 独立文件 |
 | codex | `AGENTS.md` | 追加锚点块（已有内容保留） |
 
+SKILL 入口（命令下拉可见，薄包装对齐 speccore ask）：qoder → `.agents/skills/taskq/SKILL.md`、claude → `.claude/skills/taskq/SKILL.md`、cursor → `.cursor/skills/taskq/SKILL.md`；windsurf/trae 无项目级 skill 约定，仅生成规则文件。
+
 ## taskq new
 
 建任务或模块子任务。**恒定 draft 骨架起步**：goal 填入你的原话，output/acceptance 留空，`draft: true`。

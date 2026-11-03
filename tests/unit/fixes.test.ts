@@ -303,6 +303,36 @@ describe('版本事实源与 init 工具参数', () => {
     expect(content).toContain('规则版本');
   });
 
+  it('initCommand --tools qoder 同时生成 SKILL 薄包装入口（对齐 speccore ask）', () => {
+    const root = makeCfg().projectRoot;
+    const out = initCommand(root, { tools: ['qoder'] });
+    expect(out).toContain('SKILL 入口');
+    const p = join(root, '.agents', 'skills', 'taskq', 'SKILL.md');
+    expect(existsSync(p)).toBe(true);
+    const content = readFileSync(p, 'utf-8');
+    expect(content).toContain('name: taskq');
+    expect(content).toContain('taskq ask');
+    expect(content).toContain('[TASKQ_PROMPT]');
+    expect(content).toContain('allowed-tools');
+    expect(content).toContain('SKILL 版本');
+  });
+
+  it('initCommand --tools claude/cursor 生成各自 skill 目录；windsurf 不生成（无 skill 约定）', () => {
+    const root = makeCfg().projectRoot;
+    initCommand(root, { tools: ['claude', 'cursor', 'windsurf'] });
+    expect(existsSync(join(root, '.claude', 'skills', 'taskq', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(root, '.cursor', 'skills', 'taskq', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(root, '.windsurf', 'skills'))).toBe(false);
+  });
+
+  it('initCommand --update 同步刷新已生成的 SKILL 至当前版本', () => {
+    const root = makeCfg().projectRoot;
+    initCommand(root, { tools: ['qoder'] });
+    const out = initCommand(root, { update: true });
+    expect(out).toContain('SKILL 文件');
+    expect(readFileSync(join(root, '.agents', 'skills', 'taskq', 'SKILL.md'), 'utf-8')).toContain('SKILL 版本');
+  });
+
   it('initCommand --tools claude 追加锚点块且重复执行不重复', () => {
     const root = makeCfg().projectRoot;
     writeFileSync(join(root, 'CLAUDE.md'), '# 项目说明\n\n现有内容\n', 'utf-8');

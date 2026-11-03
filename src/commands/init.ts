@@ -14,6 +14,13 @@ const TOOL_RULES: Record<string, string> = {
   codex: 'AGENTS.md',
 };
 
+/** 宿主工具 → SKILL 文件路径（薄包装：意图透传 + 输出标记处理协议，对齐 speccore ask）。仅支持有项目级 skill 约定的工具 */
+const TOOL_SKILLS: Record<string, string> = {
+  qoder: '.agents/skills/taskq/SKILL.md',
+  claude: '.claude/skills/taskq/SKILL.md',
+  cursor: '.cursor/skills/taskq/SKILL.md',
+};
+
 const RULE_ANCHOR = '## taskq 接力协议（SpecTaskChain）';
 
 export interface InitOptions {
@@ -21,7 +28,77 @@ export interface InitOptions {
   update?: boolean; // 增量升级：刷新已生成的工具规则到 CLI 当前版本 + 补骨架
 }
 
-/** 接力规则正文：教宿主 AI 如何驱动队列（退出码协议 / 验收三态 / 常用命令）。带版本标记，--update 据此刷新 */
+/** SKILL.md 正文（薄包装）：意图→命令透传 + 输出标记处理协议 + 验收三闸。带版本标记，--update 据此刷新 */
+function renderSkill(): string {
+  return [
+    '---',
+    'name: taskq',
+    'description: >',
+    '  SpecTaskChain 任务队列执行引擎。仅在用户明确要求通过 taskq 命令行工具操作任务队列时触发：',
+    '  建任务（new，对话成规格）、文档拆任务（split）、端到端流水线（pipeline）、',
+    '  体检（clarify）、无人值守接力（run/execute）、验收登记（done）、',
+    '  队列查看（status/list/report）、初始化（init）。',
+    '  以下情况明确不触发此 Skill（走正常 AI 对话）：',
+    '  解释代码逻辑、审查代码片段、讨论需求合理性、排查具体 bug、',
+    '  一般性技术咨询、算法实现、架构讨论、任何不涉及 taskq CLI 执行的请求。',
+    'allowed-tools: ["Bash", "Read", "Write", "Edit"]',
+    'disable-model-invocation: false',
+    '---',
+    '',
+    '# taskq — 任务队列执行引擎（薄包装，对齐 speccore ask）',
+    '',
+    '直接执行：execute_command("taskq ask \'用户原话\'")\n\n不要输出命令文本，不要自行分析意图，一切交给 taskq ask 做意图识别与参数提取；ask 识别不出时，按下方命令表直接执行对应命令。',
+    '',
+    '> 由 `taskq init --tools {tool}` 生成，SKILL 版本 v{version}。',
+    '> CLI 升级后执行 `taskq init --update` 可把本文件刷新到最新版。',
+    '',
+    '## 意图 → 命令表（ask 未命中时兜底）',
+    '',
+    '| 用户意图 | 命令 |',
+    '| :--- | :--- |',
+    '| 建任务 | taskq new "描述" [--type doc] [--group 模块] [--batch 批次] |',
+    '| 文档拆任务 | taskq split <文档或文字> |',
+    '| 端到端流水线 | taskq pipeline <描述/文件/目录> |',
+    '| 体检 | taskq clarify [--task ID] [--chain] |',
+    '| 接力执行 | taskq run / taskq execute --batch-size 3 |',
+    '| 验收登记 | taskq done <id> --verdict "pass 理由" |',
+    '| 查看队列 | taskq status / taskq list / taskq report |',
+    '',
+    '## 输出标记处理',
+    '',
+    '- `[TASKQ_PROMPT]` … `[TASKQ_PROMPT_END]` → 按其中任务规格**立即执行**：产出写到指定路径，完成后 `taskq done <id> --verdict "pass 理由"`，同一会话继续 `taskq run` 接力下一个',
+    '- `[TASKQ_SPEC_DRAFT]` → 按骨架写回 SPEC.md（frontmatter 三必填 goal/output/acceptance + 正文），写回后提醒用户 `taskq clarify --task <id>` 体检',
+    '- `[TASKQ_PIPELINE]` … `[TASKQ_PIPELINE_END]` → 按剧本逐项执行',
+    '- 退出码 10 → 已领取任务：按 prompt 执行 → done → 继续 run（同一会话优先）',
+    '- 退出码 12 → 拦截（draft 未定稿 / doing 占位 / failed 需人工介入）→ 停下向用户说明原因',
+    '- 退出码 0 → 队列清空',
+    '- clarify 报告三档：⛔ 阻塞先处理（补 / 给默认值 / 标记 draft / 无视四选一）→ ⚠️ 建议 → 待定',
+    '',
+    '## 验收三闸（done 前机器核对，缺了不算完）',
+    '',
+    '1. artifacts 产物门禁（文件在不在）2. checks 断言门禁（命令退出码非 0 不算完）3. review 评审门禁（结论要覆盖）',
+    '',
+    '## 接力哲学',
+    '',
+    '队列是第一公民，链 = 接力（relay），不是依赖：干完一个、下一个接着来；换会话续跑 state.json 账本，无需重新交代。',
+  ].join('\n');
+}
+
+/** 写 SKILL 文件：独立式直接覆盖写（带版本标记） */
+function writeToolSkill(projectRoot: string, tool: string): string | null {
+  const rel = TOOL_SKILLS[tool];
+  if (!rel) return null;
+  const target = join(projectRoot, rel);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, renderSkill().replace('{tool}', tool).replace('{version}', readVersion()) + '\n', 'utf-8');
+  return rel;
+}
+
+/** 该工具的 SKILL 文件是否已生成（update 模式的扫描依据） */
+function skillExists(projectRoot: string, tool: string): boolean {
+  const rel = TOOL_SKILLS[tool];
+  return !!rel && existsSync(join(projectRoot, rel));
+}
 function renderRuleSection(tool: string): string {
   return [
     RULE_ANCHOR,
@@ -93,7 +170,7 @@ export function initCommand(cwd: string, opts: InitOptions = {}): string {
     '✅ 队列骨架已就绪（SpecTaskChain）',
     '',
     `  队列目录：${cfg.queueDir}`,
-    '    tasks/                  ← 任务平铺（SPEC.md 三必填 + 正文自由）',
+    '    batch-001/             ← 任务平铺（SPEC.md 三必填 + 正文自由）',
     '    .taskchain/state.json   ← 状态文件（断点续跑）',
     '    .taskchain/TASK_TYPES/  ← 自定义任务类型定义',
     '    .taskchain/ROLES/       ← 自定义执行角色（可带 applies-to 绑定任务类型/任务）',
@@ -120,11 +197,19 @@ export function initCommand(cwd: string, opts: InitOptions = {}): string {
       );
     } else {
       const rels = targets.map((t) => writeToolRules(cfg.projectRoot, t));
+      const skillRels = targets.map((t) => writeToolSkill(cfg.projectRoot, t)).filter((r): r is string => !!r);
       lines.push(
         '',
         `  🔄 已刷新 ${targets.length} 个宿主规则文件至 v${readVersion()}：`,
         ...rels.map((r) => `     ${r}`)
       );
+      if (skillRels.length > 0) {
+        lines.push(
+          '',
+          `  🔄 已刷新 ${skillRels.length} 个 SKILL 文件至 v${readVersion()}：`,
+          ...skillRels.map((r) => `     ${r}`)
+        );
+      }
     }
     if (unknownTools.length > 0) {
       lines.push('', `  ⚠️ 暂不支持的工具：${unknownTools.join(', ')}（支持：${known.join('/')}）`);
@@ -132,7 +217,7 @@ export function initCommand(cwd: string, opts: InitOptions = {}): string {
     return lines.join('\n');
   }
 
-  // ── 常规模式：--tools 生成宿主 AI 接力规则文件 ──
+  // ── 常规模式：--tools 生成宿主 AI 接力规则 + SKILL（薄包装入口）──
   if (opts.tools && opts.tools.length > 0) {
     for (const tool of opts.tools) {
       if (!known.includes(tool)) {
@@ -140,7 +225,11 @@ export function initCommand(cwd: string, opts: InitOptions = {}): string {
         continue;
       }
       const rel = writeToolRules(cfg.projectRoot, tool);
+      const skillRel = writeToolSkill(cfg.projectRoot, tool);
       lines.push('', `  ✅ 已生成 ${tool} 的宿主接力规则：${rel}（重复执行 init 即刷新）`);
+      if (skillRel) {
+        lines.push(`  ✅ 已生成 ${tool} 的 SKILL 入口：${skillRel}（命令下拉可见 /taskq；重复执行 init 即刷新）`);
+      }
     }
   }
   return lines.join('\n');

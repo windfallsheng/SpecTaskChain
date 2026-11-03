@@ -35,7 +35,7 @@ taskq init --update                 # 项目根执行：刷新宿主接力规则
 ## 快速开始
 
 ```bash
-taskq init --tools qoder                             # 初始化骨架 + 生成宿主工具接力规则（--update 可刷新到最新版）
+taskq init --tools qoder                             # 初始化骨架 + 宿主接力规则 + SKILL 入口（--update 可刷新到最新版）
 taskq new "写三篇迁移文档" --type doc                # 建任务：落盘 draft 骨架，AI 生成规格草案
 taskq clarify --task 01-qianyiwendang               # 体检单个任务（三必填齐了没有、有没有模糊词）
 taskq run                                           # 无人值守接力：输出下一任务的完整 prompt
