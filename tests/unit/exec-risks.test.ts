@@ -1,6 +1,6 @@
 // 可执行性风险检测（exec 档）：AI 能力圈边界的确定性信号检测
 import { describe, it, expect } from 'vitest';
-import { detectExecRisks } from '../../src/core/clarify';
+import { detectExecRisks, renderClarifyReport } from '../../src/core/clarify';
 import { TaskSpec } from '../../src/core/task-spec';
 
 function makeSpec(goal: string, body = ''): TaskSpec {
@@ -71,5 +71,52 @@ describe('detectExecRisks：AI 能力圈信号', () => {
   it('正文命中同样生效（动作型要求藏在正文）', () => {
     const issues = detectExecRisks(makeSpec('准备上线材料', '4. 全部完成后登录企业微信后台发送全员通知'));
     expect(issues.some((i) => i.message.includes('认证凭据') || i.message.includes('平台账号'))).toBe(true);
+  });
+
+  it('每条 exec issue 自带方案菜单：≥2 方案 + 谁来做（ai/human/both）+ 怎么做', () => {
+    const issues = detectExecRisks(makeSpec('扫码登录后台，把合同盖章邮寄出去', ''));
+    expect(issues.length).toBeGreaterThanOrEqual(2); // 认证凭据 + 物理动作
+    for (const issue of issues) {
+      expect(issue.options).toBeDefined();
+      expect(issue.options!.length).toBeGreaterThanOrEqual(2);
+      for (const o of issue.options!) {
+        expect(['ai', 'human', 'both']).toContain(o.who);
+        expect(o.title.length).toBeGreaterThan(0);
+        expect(o.how.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('六类信号方案菜单全齐（每条都覆盖「AI 能直接做」的方案）', () => {
+    const cases: [string, string][] = [
+      ['发布版本并扫码登录后台确认', '认证凭据'],
+      ['提交部署申请并等审批', '权限审批'],
+      ['把合同打印出来盖章后邮寄给客户', '物理动作'],
+      ['写一篇推文发布到公众号后台', '平台账号'],
+      ['生成报销单并提交财务付款', '资金合规'],
+      ['发送报价后等对方回复', '外部等待'],
+    ];
+    for (const [goal, label] of cases) {
+      const issue = detectExecRisks(makeSpec(goal, ''))[0];
+      expect(issue?.message).toContain(label);
+      expect(issue?.options?.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('message 精简为风险本质（方案不在 message 里，避免终端一行太长）', () => {
+    const issue = detectExecRisks(makeSpec('发布版本并扫码登录后台确认', ''))[0];
+    expect(issue.message).toContain('认证凭据');
+    expect(issue.message).toContain('AI 无账号');
+    expect(issue.message).not.toContain('建议'); // 旧版单条建议已升级为 options 菜单
+  });
+
+  it('终端渲染：exec 档每条风险下挂方案行（谁来做图标 + 方案名 + 怎么做）', () => {
+    const issues = detectExecRisks(makeSpec('发布版本并扫码登录后台确认', ''));
+    const report = renderClarifyReport(issues);
+    expect(report).toContain('🤖 可执行性风险');
+    expect(report).toContain('· 🤝 补测试凭据'); // both
+    expect(report).toContain('· 🤖 换自动化通道'); // ai
+    expect(report).toContain('API token');
+    expect(report).toContain('方案菜单'); // 底部处理方式提示语
   });
 });

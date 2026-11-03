@@ -37,6 +37,32 @@ describe('CLARIFY.html：体检三档红黄灰分组', () => {
     expect(html).toContain('认证凭据');
   });
 
+  it('exec 方案菜单渲染：方案卡片 + 谁来做标签（🤖 AI 可执行 / 👤 人 / 🤝 人机协作）', () => {
+    const html = renderClarifyHtml([
+      {
+        level: 'exec',
+        taskId: '04-d',
+        message: '可执行性风险（认证凭据）：「扫码」',
+        options: [
+          { title: '补测试凭据', who: 'both', how: '提供测试账号，AI 全程自动化' },
+          { title: '换自动化通道', who: 'ai', how: '改用 API token 调用' },
+        ],
+      },
+    ]);
+    expect(html).toContain('class="opt"');
+    expect(html).toContain('补测试凭据');
+    expect(html).toContain('换自动化通道');
+    expect(html).toContain('人机协作'); // both
+    expect(html).toContain('AI 可执行'); // ai
+    expect(html).toContain('class="who both"');
+    expect(html).toContain('class="who ai"');
+  });
+
+  it('无 options 的 exec issue（兼容旧对象）不渲染空方案块', () => {
+    const html = renderClarifyHtml([{ level: 'exec', taskId: '04-d', message: 'x' }]);
+    expect(html).not.toContain('class="opt"');
+  });
+
   it('无问题时全绿页', () => {
     const html = renderClarifyHtml([]);
     expect(html).toContain('未发现表达不充分之处');
