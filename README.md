@@ -71,11 +71,21 @@ taskq ask "看下进度"                                 # 口语入口（识别
 | [docs/quick-start.md](docs/quick-start.md) | 快速上手：五步闭环 + 写规格三式 |
 | [docs/spec-format.md](docs/spec-format.md) | SPEC.md 规格格式：三必填、验收三态、完整示例 |
 | [docs/queue-structure.md](docs/queue-structure.md) | 队列组织：平铺任务 / 任务模块 / 依赖 / 类型系统 / 状态文件 |
+| [docs/directory-layout.md](docs/directory-layout.md) | 项目目录布局：队列本体 / 产出落位 / 用户自组织区（docs·data·research·materials 都是干什么的） |
 | [docs/acceptance.md](docs/acceptance.md) | 验收三态门禁详解 + 留痕即产物原则 |
 | [docs/relay-protocol.md](docs/relay-protocol.md) | AI 接力协议：退出码、prompt 块、跨工具续跑 |
 | [docs/clarify.md](docs/clarify.md) | 澄清体检：四入口、三级信号、处理四式 |
 | [docs/commands.md](docs/commands.md) | 命令参考大全 |
 | [docs/design.md](docs/design.md) | 设计决策、能力边界与路线图 |
+
+## 项目目录布局
+
+taskq 不接管你的项目——它只管理 `queue/`。项目里其余目录只有两种身份：
+
+- **产出落位**：`docs/` `data/` `research/` `presentation/` `scripts/` `src/` `outputs/` ——按任务类型自动归位（`--type doc` 产出落 `docs/`、`--type research` 落 `research/`……），目录按需出现，映射可自定义。
+- **用户自组织区**：`materials/` `specs/` `logs/` 或任何你已有的目录——taskq 不认识也不碰，名字随你定；素材类文件放这里，`taskq split materials/x.md` 指过去即可。
+
+三类目录各司其职的完整说明见 [docs/directory-layout.md](docs/directory-layout.md)。
 
 ## 队列结构
 
