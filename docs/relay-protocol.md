@@ -4,17 +4,17 @@ SpecTaskChain 把「AI 的记忆」外置为「文件系统的账本」。CLI �
 
 ## 退出码协议
 
-`taskq run` 只返回三种退出码，宿主 AI 据此动作：
+`taskq run` 只返回三种业务退出码，宿主 AI 据此动作：
 
 | 退出码 | 含义 | 宿主 AI 动作 |
 | :--- | :--- | :--- |
 | `10` | 有下一任务，prompt 已输出 | 执行 prompt 块内容 → `taskq done` 登记验收 → 再次 `taskq run` |
-| `12` | 拦截（见下四情形） | 按摘要中的指引处理 |
+| `12` | 拦截（见下情形） | 按摘要中的指引处理 |
 | `0` | 队列已清空 | 全部完成，收工 |
 
-退出码是给机器的信号——宿主 AI 的编排逻辑靠它决定「继续接力」还是「停下来处理」，不靠解析文本猜测。
+退出码是给机器的信号——宿主 AI 的编排逻辑靠它决定「继续接力」还是「停下来处理」，不靠解析文本猜测。另有 `1`（兜底）：未知命令或未预期异常——不属于接力协议，宿主 AI 应重读命令用法而非重试。
 
-### 退出码 12 的四种情形
+### 退出码 12 的情形
 
 | 情形 | 摘要关键词 | 处理方式 |
 | :--- | :--- | :--- |
@@ -22,6 +22,19 @@ SpecTaskChain 把「AI 的记忆」外置为「文件系统的账本」。CLI �
 | 模块缺共享 spec | 「CONSTRAINTS.md 缺失或为空」 | 补写模块 CONSTRAINTS.md 后再接力 |
 | 任务正在执行中 | 「正在执行中」 | 执行者完成 `taskq done` 后接力继续；执行者已中断则等 24 小时超时自动重拾（或手动把 state.json 该任务状态改为 todo） |
 | 任务失败需人工介入 | 「需人工介入」 | 检查产出与规格，修复后 `taskq done <id> --verdict "..."` 重新验收；或手动把 state.json 该任务状态改为 todo 整单重跑 |
+| 批次不存在 | 「批次…不存在」 | 用 `taskq list` 查现有批次（batch-NNN 或 --batch all） |
+| 定向目标不存在 | 「定向目标不存在」 | 用 `taskq list` 查任务 ID / 模块 ID |
+
+## 标记协议（[TASKQ_*] 全集）
+
+CLI 输出中的 `[TASKQ_*]` 块是给宿主 AI 的结构化交接信号，全集如下：
+
+| 标记 | 出现场景 | 语义 |
+| :--- | :--- | :--- |
+| `[TASKQ_PROMPT]` / `[TASKQ_PROMPT_END]` | `run` / `execute` | 完整执行 prompt 块，宿主 AI 按块内容执行 |
+| `[TASKQ_SPEC_DRAFT]` | `new` | 宿主 AI 生成规格草案并写回 SPEC.md（补全 output/acceptance 三态） |
+| `[TASKQ_PIPELINE]` / `[TASKQ_PIPELINE_END]` | `pipeline` | 流水线剧本块，宿主 AI 按剧本编排多命令 |
+| `[TASKQ_GUIDE: <path>]` | `init` | HTML 引导页路径，宿主 AI 用 present_files 展示给用户 |
 
 ## 执行 prompt 的四段增强（CLI 保证读到的是真的）
 

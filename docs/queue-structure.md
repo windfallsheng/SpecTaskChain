@@ -15,9 +15,12 @@ queue/
 │       └── 02-task-02/       ← 第三层子任务：目录名 = 任务 ID
 │           └── SPEC.md
 ├── batch-002/               ← 下次要做的另一批任务（mkdir 手工建，建完即插队为最新批次）
+├── GUIDE.html               ← HTML 引导页（init 生成；同院兄弟：PANEL/CLARIFY/REPORT.html）
 └── .taskchain/
     ├── state.json            ← 状态文件
-    └── TASK_TYPES/           ← 自定义任务类型定义
+    ├── TASK_TYPES/           ← 自定义任务类型定义
+    ├── ROLES/                ← 自定义执行角色定义
+    └── TEMPLATES/            ← 规格正文模板（类型级 + 通用级）
 ```
 
 规则：
@@ -174,6 +177,7 @@ new 输出会亮明本次模板来源；模板只管正文章节骨架，frontma
       "status": "done",            // todo / doing / done / failed / draft
       "attempts": 2,               // 尝试次数
       "doneAt": "2026-10-12T10:00:00.000Z",
+      "doingAt": "2026-10-12T09:00:00.000Z",  // 领取时间（doing 占位，超 24h 自动重拾）
       "verdict": "pass 结构清晰"    // 验收结论
     }
   }
@@ -181,7 +185,7 @@ new 输出会亮明本次模板来源；模板只管正文章节骨架，frontma
 ```
 
 - **断点续跑的唯一事实源**：任务状态、尝试次数、验收结论全部落盘。
-- 状态缺失（文件损坏）时按空状态处理，任务视为未完成重新接力。
+- 状态文件损坏时备份为 `state.json.bak` + stderr 告警，按空状态处理——重跑比丢账更诚实。
 - `state.json` 是机器账本，手动改前先备份；跨工具接力（换 IDE/换 AI 工具）不需要任何迁移——文件就在队列里。
 
 ## 上下文防爆（prompt 尺寸有上限）

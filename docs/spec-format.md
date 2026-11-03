@@ -20,6 +20,13 @@
 | `type` | 可选 | 任务类型，缺省 `general`（见 [queue-structure.md](queue-structure.md#任务类型)） |
 | `depends-on` | 可选 | 依赖的任务 ID 列表，声明后才参与拓扑排序 |
 | `draft` | 可选 | `true` = 规格未补全，`taskq run` 会拦截（`--skip-draft` 强跑） |
+| `created-at` | 可选 | 创建日期（new 自动落盘；手工建的任务以目录出生时间兜底） |
+| `priority` | 可选 | 优先级（P0/P1/P2 或自由值；筛选与展示） |
+| `tags` | 可选 | 标签（自由关键词，跨批次按主题筛；支持 `[a, b]` 内联或 YAML 列表） |
+| `estimate` | 可选 | 预估工时（小时；report/status 汇总） |
+| `role` | 可选 | 执行角色（内置或 .taskchain/ROLES/{role}.md；type 管形态，role 管专业） |
+
+> 元数据字段（created-at/priority/tags/estimate/role）的用法与示例见 [queue-structure.md](queue-structure.md#元数据可选不写照样跑)。
 
 ## acceptance 三态写法
 
