@@ -24,6 +24,17 @@ describe('HTML 引导页：内容章节与写盘', () => {
     expect(html).toContain('github.com/windfallsheng/SpecTaskChain');
   });
 
+  it('可视化页面节互链四页（GUIDE/PANEL/CLARIFY/REPORT）', () => {
+    const html = guideHtml(makeCfg());
+    expect(html).toContain('可视化页面');
+    expect(html).toContain('PANEL.html');
+    expect(html).toContain('status --panel');
+    expect(html).toContain('CLARIFY.html');
+    expect(html).toContain('clarify --html');
+    expect(html).toContain('REPORT.html');
+    expect(html).toContain('report --html');
+  });
+
   it('命令速查表覆盖全部 13 个命令入口', () => {
     const html = guideHtml(makeCfg());
     for (const cmd of ['init', 'new', 'split', 'pipeline', 'clarify', 'run', 'execute', 'reset', 'done', 'list', 'status', 'report', 'ask']) {

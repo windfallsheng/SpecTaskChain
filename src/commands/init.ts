@@ -106,6 +106,7 @@ function renderSkillFiles(tool: string): SkillFile[] {
       '- 退出码 12 → 拦截（draft 未定稿 / doing 占位 / failed 需人工介入）→ 停下向用户说明原因',
       '- 退出码 0 → 队列清空',
       '- clarify 报告三档：⛔ 阻塞先处理（补 / 给默认值 / 标记 draft / 无视四选一）→ ⚠️ 建议 → 待定',
+      '- 用户要「网页版 / 可视化」时给对应命令加 --html：clarify --html 体检报告 / report --html 复盘报告 / status --panel 面板 / help guide --html 引导页（生成后 present_files 展示给用户）',
       '',
       '## 验收三闸（done 前机器核对，缺了不算完）',
       '',

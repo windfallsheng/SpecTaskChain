@@ -219,3 +219,12 @@ taskq help guide --html    # 生成 HTML 引导页 queue/GUIDE.html（双击即�
 ```
 
 > HTML 引导页 `queue/GUIDE.html`：`taskq init` 自动生成（输出含 `[TASKQ_GUIDE: <path>]` 标记，宿主 AI 展示给用户）；内容 = 上手三步 + 目录布局 + 命令速查 + 核心概念 + 常见问题，与 `taskq status --panel` 生成的 PANEL.html 同院。
+
+### HTML 页面体系（都长在 queue/ 下，双击即看）
+
+| 页面 | 入口 | 旅程位置 |
+| :--- | :--- | :--- |
+| GUIDE.html | init 自动生成 / `help guide --html` | 进门——工具说明书 |
+| PANEL.html | `status --panel` | 现状——队列仪表盘 |
+| CLARIFY.html | `clarify --html` | 问题——体检报告（三档红黄灰分组） |
+| REPORT.html | `report --html` | 复盘——执行账本（状态分布 + 失败红卡） |
