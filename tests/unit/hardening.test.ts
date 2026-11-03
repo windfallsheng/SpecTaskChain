@@ -8,8 +8,8 @@ import { relayNext, buildTaskPrompt } from '../../src/core/runner';
 import { detectTaskIssues, detectModuleIssues } from '../../src/core/clarify';
 import { parseFrontmatter, buildSpec } from '../../src/core/task-spec';
 
-/** 造临时队列：模块 + 子任务 + CONSTRAINTS */
-function makeQueue(opts: { withConstraints?: boolean } = {}) {
+/** 造临时队列：模块 + 子任务 + CONSTRAINTS（constraintsText 自定义共享约束内容） */
+function makeQueue(opts: { withConstraints?: boolean; constraintsText?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'stc-hard-'));
   const tasksDir = join(root, 'queue', 'tasks');
   const moduleDir = join(tasksDir, 'auth');
@@ -26,7 +26,7 @@ acceptance:
 写登录接口`;
   writeFileSync(join(subDir, 'SPEC.md'), subSpec, 'utf-8');
   if (opts.withConstraints) {
-    writeFileSync(join(moduleDir, 'CONSTRAINTS.md'), '模块公共约束：统一错误码体系', 'utf-8');
+    writeFileSync(join(moduleDir, 'CONSTRAINTS.md'), opts.constraintsText || '模块公共约束：统一错误码体系', 'utf-8');
   }
   return {
     root,
@@ -126,6 +126,33 @@ describe('模块约束加固：共享 spec 是必读前提', () => {
     const issues = detectModuleIssues(scanQueue(queueDir, metaDir));
     expect(issues.length).toBeGreaterThan(0);
     expect(issues[0].level).toBe('blocking');
+  });
+
+  it('clarify：共享约束含模糊词 → suggest（含糊会被所有子任务继承）', () => {
+    const { queueDir, metaDir } = makeQueue({ withConstraints: true, constraintsText: '所有接口适当优化一下性能' });
+    const issues = detectModuleIssues(scanQueue(queueDir, metaDir));
+    const vague = issues.filter((i) => i.level === 'suggest' && i.message.includes('模糊词'));
+    expect(vague.length).toBe(1);
+    expect(vague[0].taskId).toBe('auth');
+    expect(vague[0].message).toContain('优化一下');
+    expect(vague[0].message).toContain('继承');
+  });
+
+  it('clarify：共享约束含可执行性风险 → exec 档带方案菜单（与子任务同权体检）', () => {
+    const { queueDir, metaDir } = makeQueue({ withConstraints: true, constraintsText: '上线前需要扫码登录后台确认' });
+    const issues = detectModuleIssues(scanQueue(queueDir, metaDir));
+    const exec = issues.filter((i) => i.level === 'exec');
+    expect(exec.length).toBeGreaterThanOrEqual(1);
+    expect(exec[0].taskId).toBe('auth');
+    expect(exec[0].message).toContain('模块「auth」公共约束');
+    expect(exec[0].message).toContain('认证凭据');
+    expect(exec[0].options?.length).toBeGreaterThanOrEqual(2); // 方案菜单随行
+  });
+
+  it('clarify：干净的共享约束 → 零内容级 issue', () => {
+    const { queueDir, metaDir } = makeQueue({ withConstraints: true });
+    const issues = detectModuleIssues(scanQueue(queueDir, metaDir));
+    expect(issues).toEqual([]);
   });
 });
 

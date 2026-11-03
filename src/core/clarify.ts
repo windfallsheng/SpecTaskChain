@@ -114,11 +114,10 @@ const EXEC_SIGNALS: ExecSignal[] = [
 ];
 
 /**
- * 可执行性风险检测：扫 goal + 正文，命中信号库 → exec 档 issue
- * 同任务同类别只报一次（取首个命中词）
+ * 文本级可执行性信号扫描：任务 SPEC（goal+正文）与模块共享约束（CONSTRAINTS.md）共用同一套词表
+ * prefix：上下文前缀（任务为空；模块为「模块「X」公共约束：」），让报告里一眼分清风险出自哪里
  */
-export function detectExecRisks(spec: TaskSpec): ClarifyIssue[] {
-  const text = `${spec.goal}\n${spec.body}`;
+function scanExecSignals(text: string, id: string, prefix: string): ClarifyIssue[] {
   const issues: ClarifyIssue[] = [];
   const reported = new Set<string>();
   for (const sig of EXEC_SIGNALS) {
@@ -128,13 +127,21 @@ export function detectExecRisks(spec: TaskSpec): ClarifyIssue[] {
       reported.add(sig.label);
       issues.push({
         level: 'exec',
-        taskId: spec.id,
-        message: `可执行性风险（${sig.label}）：「${hit[0]}」——${sig.risk}`,
+        taskId: id,
+        message: `${prefix}可执行性风险（${sig.label}）：「${hit[0]}」——${sig.risk}`,
         options: sig.options,
       });
     }
   }
   return issues;
+}
+
+/**
+ * 可执行性风险检测：扫 goal + 正文，命中信号库 → exec 档 issue
+ * 同任务同类别只报一次（取首个命中词）
+ */
+export function detectExecRisks(spec: TaskSpec): ClarifyIssue[] {
+  return scanExecSignals(`${spec.goal}\n${spec.body}`, spec.id, '');
 }
 
 /**
@@ -239,13 +246,33 @@ export function detectOutputConflicts(queue: QueueScan): ClarifyIssue[] {
   return issues;
 }
 
-/** 模块公共约束检查：CONSTRAINTS.md 缺失/为空 → blocking（子任务执行会被阻塞，绝不静默裸奔） */
+/**
+ * 模块公共约束检查（两级）：
+ * 1. CONSTRAINTS.md 缺失/为空 → blocking（子任务执行会被阻塞，绝不静默裸奔）
+ * 2. 内容级体检：共享约束与子任务同权——模糊词/指代不明 → suggest；可执行性风险 → exec（带方案菜单）
+ *    共享 spec 是每个子任务执行前必读的底座，里面的含糊会被所有子任务继承放大，更该体检
+ */
 export function detectModuleIssues(queue: QueueScan): ClarifyIssue[] {
   const issues: ClarifyIssue[] = [];
   for (const m of queue.modules) {
     if (m.constraintsMissing) {
       issues.push({ level: 'blocking', taskId: m.id, message: `模块「${m.id}」缺少公共约束（CONSTRAINTS.md 缺失或为空）——共享 spec 是子任务每次执行前重置的必读前提，先补全：${m.constraintsPath}` });
+      continue;
     }
+    const text = m.constraints;
+    for (const w of VAGUE_WORDS) {
+      if (text.includes(w)) {
+        issues.push({ level: 'suggest', taskId: m.id, message: `模块「${m.id}」公共约束含模糊词「${w}」——所有子任务共用，含糊会被每个子任务继承放大` });
+        break; // 同模块只报一次模糊词
+      }
+    }
+    for (const r of AMBIGUOUS_REFS) {
+      if (text.includes(r)) {
+        issues.push({ level: 'suggest', taskId: m.id, message: `模块「${m.id}」公共约束指代不明「${r}」——子任务执行时只能脑补所指` });
+        break;
+      }
+    }
+    issues.push(...scanExecSignals(text, m.id, `模块「${m.id}」公共约束：`));
   }
   return issues;
 }
