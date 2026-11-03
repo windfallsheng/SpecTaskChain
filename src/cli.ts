@@ -2,6 +2,7 @@
 // Chain = 接力（relay），不是依赖（dependency）——队列是第一公民，无人值守接力完成
 import { resolveConfig, ensureStructure } from './core/config';
 import { readVersion } from './core/version';
+import { helpText, guideText, commandDetail } from './core/help';
 import { relayNext, batchRelay, renderBatchResult } from './core/runner';
 import { initCommand } from './commands/init';
 import { newCommand } from './commands/new';
@@ -17,35 +18,6 @@ import { splitCommand } from './commands/split';
 import { pipelineCommand } from './commands/pipeline';
 
 const VERSION = readVersion();
-
-function helpText(): string {
-  return [
-    `SpecTaskChain v${VERSION} — 规格驱动的任务队列`,
-    '',
-    '用法：taskq <命令> [参数]',
-    '',
-    '命令：',
-    '  init                      初始化队列骨架（queue/batch-001/ + .taskchain/）',
-    '  new <描述> [--type doc] [--group 模块名] [--batch 批次] [--priority P1] [--tags  客户,线上] [--estimate 8] [--role coder]   建任务（对话成规格：AI 生成草案，你确认）',
-    '  split <文档或文字> [--group 模块名] [--type 类型]   文档拆任务（只出 goal+初步内 容，不碰验收三态）',
-    '  pipeline <描述或文件或目录> [--type 类型] [--group 模块] [--batch 批次] [--batch-size N]   端到端流水线（素材进→拆分→澄清→执行→收尾）',
-    '  clarify [--task ID] [--file 路径] [--chain]  随叫随到的体检（写完查 / 建链查 / 翻车查）',
-    '  run [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]  无人值守接力执行（默认最新批次；输出下一任务 prompt）',
-    '  execute [--batch-size N] [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]  批次接力（一次领取 N 个任务的完整 prompt，默认 3；拦停语义同 run）',
-    '  reset <task-id|模块ID|batch-NNN|--all> [--hard]  重跑复位（状态回 todo + attempts 清零；软复位留痕保留=调整补充，--hard 清留痕=从头再来）',
-    '  done <task-id> [--verdict "pass ..."]       验收登记（产物/断言/评审三态门禁）',
-    '  list [--batch 批次] [--status todo|done|failed] [--type doc]   队列清单（按批次分组，三扇窗筛选）',
-    '  status [--panel] [--batch 批次|all]  队列总览（默认聚焦最新批次；--panel 生成 HTML 可视化面板）',
-    '  report [--batch 批次] [--status 状态] [--type 类型]   队列报告（执行留痕，有账可查）',
-    '  ask "自然语言"            口语入口（「建个任务…」「澄清…」「跑队列」）',
-    '',
-    '理念：Spec 保证「做对」（验收先行），Chain 保证「干完」（接力 + 断点续跑）。',
-    '批次：batch-NNN = 一次要做的全部任务。下次要用再建新批次（mkdir queue/batch-002），新任务自动落最新批次，run 默认跑最新批次。',
-    '元数据（都可选，不写照样跑）：任务 SPEC.md 的 created-at/priority/tags/estimate/role；批次 BATCH.md 与模块 CONSTRAINTS.md 顶部的 name/purpose/created-at。',
-    '执行角色（role，可选）：type 管形态，role 管专业——内置 generalist/document-writer/code-engineer/debug-engineer/test-engineer/security-reviewer/devops-engineer/data-analyst/research-analyst/presentation-designer（旧名兼容），自定义角色放 .taskchain/ROLES/{role}.md；未指定角色时 AI 按任务内容自动选择。',
-    '规格轻而有骨：frontmatter 三必填（goal/output/acceptance）+ 正文自由。',
-  ].join('\n');
-}
 
 function main(): void {
   const args = process.argv.slice(2);
@@ -172,9 +144,13 @@ function main(): void {
       case 'help':
       case '--help':
       case '-h':
-      case undefined:
-        output = helpText();
+      case undefined: {
+        // help [guide|<命令>]：总览 → 引导页 / 单命令详情
+        if (rest[0] === 'guide') output = guideText();
+        else if (rest[0] && !rest[0].startsWith('-')) output = commandDetail(rest[0]);
+        else output = helpText();
         break;
+      }
       case '--version':
       case '-v':
         output = VERSION;
