@@ -53,9 +53,11 @@ export function validateRequired(spec: Partial<TaskSpec>): SpecValidation {
  * 只服务 SPEC.md 的结构，不追求完整 YAML 规范
  */
 export function parseFrontmatter(content: string): { data: Record<string, any>; body: string } {
-  const m = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+  // Windows 编辑器兼容：BOM 头会让整个 frontmatter 匹配失败；CRLF 下正则的 . 不匹配 \r，顶层键值行会整行丢失——两处归一化再解析
+  const normalized = content.replace(/^\uFEFF/, '');
+  const m = normalized.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
   if (!m) return { data: {}, body: content };
-  const lines = m[1].split('\n');
+  const lines = m[1].replace(/\r\n/g, '\n').split('\n');
   const data: Record<string, any> = {};
   let i = 0;
   while (i < lines.length) {
