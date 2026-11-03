@@ -49,15 +49,12 @@ export function validateRequired(spec: Partial<TaskSpec>): SpecValidation {
 }
 
 /**
- * 极简 YAML frontmatter 解析器（支持两层缩进与 - 列表）
- * 只服务 SPEC.md 的结构，不追求完整 YAML 规范
+ * 极简 YAML 解析器（顶层 key: value + 两层缩进嵌套 + - 列表）
+ * SPEC.md 的 frontmatter 与批次配置 BATCH.yaml 共用同一套语法，不追求完整 YAML 规范
+ * 兼容 CRLF（正则的 . 不匹配 \r，顶层键值行会整行丢失——先归一化再解析）
  */
-export function parseFrontmatter(content: string): { data: Record<string, any>; body: string } {
-  // Windows 编辑器兼容：BOM 头会让整个 frontmatter 匹配失败；CRLF 下正则的 . 不匹配 \r，顶层键值行会整行丢失——两处归一化再解析
-  const normalized = content.replace(/^\uFEFF/, '');
-  const m = normalized.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
-  if (!m) return { data: {}, body: content };
-  const lines = m[1].replace(/\r\n/g, '\n').split('\n');
+export function parseSimpleYaml(text: string): Record<string, any> {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
   const data: Record<string, any> = {};
   let i = 0;
   while (i < lines.length) {
@@ -91,7 +88,18 @@ export function parseFrontmatter(content: string): { data: Record<string, any>; 
     }
     i++;
   }
-  return { data, body: m[2] };
+  return data;
+}
+
+/**
+ * 解析 SPEC.md 的 frontmatter（--- 包裹的 YAML 块）
+ * Windows 编辑器兼容：BOM 头会让整个 frontmatter 匹配失败——先剥掉再解析
+ */
+export function parseFrontmatter(content: string): { data: Record<string, any>; body: string } {
+  const normalized = content.replace(/^\uFEFF/, '');
+  const m = normalized.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+  if (!m) return { data: {}, body: content };
+  return { data: parseSimpleYaml(m[1]), body: m[2] };
 }
 
 /** 剥离外层引号（YAML 标量 "..." / '...'），普通文本原样返回 */

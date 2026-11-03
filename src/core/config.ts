@@ -1,6 +1,7 @@
 // 项目配置：定位队列目录与 .taskchain 元数据
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, copyFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { ensureBatchConfig } from './batch-config';
 
 export interface TaskQConfig {
   projectRoot: string; // 项目根目录（产出/断言的基准，用户视角）
@@ -17,7 +18,8 @@ export function resolveConfig(cwd = process.cwd()): TaskQConfig {
 
 /** 初始化队列骨架：queue/batch-001/ + .taskchain/ 三大自定义院落（TASK_TYPES/ROLES/TEMPLATES）+ state.json（幂等）
  * 批次目录 = 「一次要做的所有任务」的容器，下次要用再建下一个（batch-002、batch-003…）
- * 已存在旧式 tasks/ 的老项目不动它（扫描兼容为第 0 批） */
+ * 已存在旧式 tasks/ 的老项目不动它（扫描兼容为第 0 批）
+ * 批次配置：新建批次自动落 BATCH.yaml；已有批次缺失时幂等补齐（存在即不动，用户手改不重置） */
 export function ensureStructure(cfg: TaskQConfig): void {
   // 批次目录只在「队列完全没有批次区」时建 batch-001 起步——已有批次（或旧式 tasks/）时不动，
   // 否则用户手动合并/删除批次后，一跑 init/--update 空批次又复活
@@ -31,6 +33,12 @@ export function ensureStructure(cfg: TaskQConfig): void {
   })();
   if (!hasBatchArea) {
     mkdirSync(join(queueDir, 'batch-001'), { recursive: true });
+  }
+  // 所有 batch-NNN 目录补齐 BATCH.yaml（幂等：已存在跳过——用户手改过的配置是最高优先级资产）
+  try {
+    readdirSync(queueDir).filter((n) => /^batch-/i.test(n)).forEach((n) => ensureBatchConfig(join(queueDir, n)));
+  } catch {
+    // 队列目录都不存在时忽略（mkdirSync 已建 batch-001，上面循环必能跑）
   }
   mkdirSync(join(cfg.metaDir, 'TASK_TYPES'), { recursive: true }); // 自定义任务类型（管形态）
   mkdirSync(join(cfg.metaDir, 'ROLES'), { recursive: true }); // 自定义执行角色（管专业，可带 applies-to 绑定）

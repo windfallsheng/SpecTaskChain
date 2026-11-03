@@ -4,13 +4,14 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TaskQConfig, readState, writeState } from './config';
-import { scanQueue, buildExecutionSequence, filterExecutionSequence, findNextPending, selectBatch, latestBatchId, DOING_TIMEOUT_MS, ExecutableTask } from './queue';
+import { scanQueue, buildExecutionSequence, filterExecutionSequence, findNextPending, selectBatch, latestBatchId, DOING_TIMEOUT_MS, ExecutableTask, BatchInfo } from './queue';
+import { readBatchConfig, SYSTEM_BATCH_DEFAULTS, BatchConfig } from './batch-config';
 import { resolveTaskType } from './task-type';
 import { resolveReferences } from './references';
 import { renderEffectiveRoleSegment, resolveEffectiveRole } from './task-role';
 
-/** 每任务尝试上限（失败重试，超过标记 failed 不再接力） */
-export const MAX_ATTEMPTS = 3;
+/** 每任务尝试上限（失败重试，超过标记 failed 不再接力）——保留导出兼容；批次可用 BATCH.yaml 的 max-attempts 覆盖 */
+export const MAX_ATTEMPTS = SYSTEM_BATCH_DEFAULTS['max-attempts'];
 
 // —— 上下文防爆（Speccore 教训：prompt 无上限必爆；截断 + 亮明原文路径，AI 按需 Read 原文）——
 const MAX_BODY_CHARS = 12000; // 规格正文截断上限
@@ -165,13 +166,14 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
  * 接力推进：找第一个未完成任务，输出其 prompt
  * - 队列空 → exitCode 0
  * - 有下一任务 → 占位 doing + 输出 [TASKQ_PROMPT] 块，exitCode 10（宿主 AI 接力）
- * - draft 任务 → 提示先 clarify（可 --skip-draft 强跑）
+ * - draft 任务 → 提示先 clarify（--skip-draft 或批次配置 skip-draft 强跑）
  * - 模块子任务但共享 spec 缺失/为空 → 阻塞（宁可停，不可裸奔）
  * - failed 任务 → 需人工介入（协议拦截，不无限重试）
  * - 有 doing 任务未完成（未超时）→ 有执行者在干活，不重复领取
  */
 export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?: string; task?: string; module?: string } = {}): NextTaskInfo {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
+  const batchCfg = effectiveBatchConfig(cfg, queue.batches, opts.batch);
   // 批次聚焦：缺省 = 最新批次（新批次插队先跑）；--batch batch-NNN 指定老批次；--batch all 全批次
   const view = selectBatch(queue, opts.batch);
   if (!view) {
@@ -217,7 +219,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
       task: next,
       prompt: '',
       exitCode: 12,
-      summary: `⛔ 任务「${next.spec.id}」已失败 ${st.attempts} 次（达尝试上限）——需人工介入：检查产出与规格，修复后运行 \`taskq done ${next.spec.id} --verdict "..."\` 重新验收；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`,
+      summary: `⛔ 任务「${next.spec.id}」已失败 ${st.attempts} 次（达尝试上限 ${batchCfg['max-attempts']} 次）——需人工介入：检查产出与规格，修复后运行 \`taskq done ${next.spec.id} --verdict "..."\` 重新验收；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`,
     };
   }
   if (next.module && next.module.constraintsMissing) {
@@ -228,12 +230,12 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
       summary: `⏸ 任务「${next.spec.id}」属于模块「${next.module.id}」，但模块公共约束 CONSTRAINTS.md 缺失或为空——共享 spec 是子任务每次执行前重置的必读前提，先补全再接力：${next.module.constraintsPath}`,
     };
   }
-  if (next.spec.draft && !opts.skipDraft) {
+  if (next.spec.draft && !(opts.skipDraft || batchCfg['skip-draft'])) {
     return {
       task: next,
       prompt: '',
       exitCode: 12,
-      summary: `⏸ 任务「${next.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${next.spec.id}\` 补全；或 \`taskq run --skip-draft\` 强跑`,
+      summary: `⏸ 任务「${next.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${next.spec.id}\` 补全；或 \`taskq run --skip-draft\` 强跑（也可在批次 BATCH.yaml 设 skip-draft: true 对本批长期生效）`,
     };
   }
   const prompt = buildTaskPrompt(next, cfg.metaDir, cfg.projectRoot);
@@ -292,6 +294,16 @@ export function queueSummary(cfg: TaskQConfig, opts: { batch?: string } = {}): s
 // 拦停语义与 relayNext 完全一致（draft/模块缺共享 spec/doing 活跃/failed 需人工介入），批截止于拦停任务
 // ============================================================
 
+/**
+ * 当前聚焦批次的配置（BATCH.yaml）：--batch 指定批次 / 缺省最新批次；
+ * 'all' 跨批次或队列无批次目录时回落系统默认（跨批次混跑没有单一「脾气」）
+ */
+function effectiveBatchConfig(cfg: TaskQConfig, batches: BatchInfo[], batch?: string): BatchConfig {
+  const batchId = batch && batch !== 'all' ? batch : latestBatchId(batches);
+  if (!batchId) return { ...SYSTEM_BATCH_DEFAULTS };
+  return readBatchConfig(join(cfg.queueDir, batchId));
+}
+
 export interface BatchRelayResult {
   tasks: ExecutableTask[];  // 本批领取的任务
   prompts: string[];        // 与 tasks 一一对应的完整执行 prompt
@@ -303,6 +315,7 @@ export interface BatchRelayResult {
 /** 领取一批任务（默认 3 个）：按执行序列取连续未完成任务，批内逐个渲染 prompt + 占位 doing */
 export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?: number; skipDraft?: boolean; task?: string; module?: string } = {}): BatchRelayResult {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
+  const batchCfg = effectiveBatchConfig(cfg, queue.batches, opts.batch);
   const view = selectBatch(queue, opts.batch);
   if (!view) {
     return {
@@ -325,7 +338,9 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
     }
   }
   const state = readState(cfg);
-  const batchSize = Math.max(1, opts.batchSize || 3);
+  // 批大小优先级链：CLI --batch-size > 批次配置 batch-size > 系统默认（配置层已字段级兜底，这里只兜 CLI 显式 0/负数的病态输入）
+  const batchSize = Math.max(1, opts.batchSize || batchCfg['batch-size']);
+  const skipDraft = opts.skipDraft || batchCfg['skip-draft'];
   const taken: ExecutableTask[] = [];
   let stop: string | undefined;
 
@@ -334,7 +349,7 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
     const st = state[t.spec.id];
     if (st?.status === 'done') continue;
     if (st?.status === 'failed') {
-      stop = `⛔ 任务「${t.spec.id}」已失败 ${st.attempts} 次（达尝试上限）——需人工介入：检查产出与规格，修复后运行 \`taskq done ${t.spec.id} --verdict "..."\` 重新验收；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`;
+      stop = `⛔ 任务「${t.spec.id}」已失败 ${st.attempts} 次（达尝试上限 ${batchCfg['max-attempts']} 次）——需人工介入：检查产出与规格，修复后运行 \`taskq done ${t.spec.id} --verdict "..."\` 重新验收；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`;
       break;
     }
     if (st?.status === 'doing') {
@@ -349,8 +364,8 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
       stop = `⏸ 任务「${t.spec.id}」属于模块「${t.module.id}」，但模块公共约束 CONSTRAINTS.md 缺失或为空——先补全再接力：${t.module.constraintsPath}`;
       break;
     }
-    if (t.spec.draft && !opts.skipDraft) {
-      stop = `⏸ 任务「${t.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${t.spec.id}\` 补全；或 \`taskq execute --skip-draft\` 强跑`;
+    if (t.spec.draft && !skipDraft) {
+      stop = `⏸ 任务「${t.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${t.spec.id}\` 补全；或 \`taskq execute --skip-draft\` 强跑（也可在批次 BATCH.yaml 设 skip-draft: true 对本批长期生效）`;
       break;
     }
     taken.push(t);

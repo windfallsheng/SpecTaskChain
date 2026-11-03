@@ -89,7 +89,8 @@ function main(): void {
         // 批次接力：run 的批量化——一次领取 N 个任务的完整 prompt（默认 3），拦停语义与 run 一致
         const sizeRaw = flag('--batch-size');
         const size = sizeRaw !== undefined ? Number(sizeRaw) : undefined;
-        const result = batchRelay(cfg, { batch: flag('--batch'), batchSize: size !== undefined && !isNaN(size) ? size : 3, skipDraft: hasFlag('--skip-draft'), task: flag('--task'), module: flag('--module') });
+        // batchSize 只传「显式提供」的值；未提供传 undefined → batchRelay 内部走批次配置（BATCH.yaml）→ 系统默认的优先级链
+        const result = batchRelay(cfg, { batch: flag('--batch'), batchSize: size !== undefined && !isNaN(size) ? size : undefined, skipDraft: hasFlag('--skip-draft'), task: flag('--task'), module: flag('--module') });
         output = renderBatchResult(result);
         process.exitCode = result.exitCode;
         break;

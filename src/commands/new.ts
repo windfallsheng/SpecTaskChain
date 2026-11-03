@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TaskQConfig } from '../core/config';
 import { renderSpec } from '../core/task-spec';
+import { ensureBatchConfig } from '../core/batch-config';
 import { resolveTaskType, listBuiltinTypes } from '../core/task-type';
 import { toSlug, hasCJK } from '../core/task-naming';
 import { scanQueue, latestBatchId, QueueScan } from '../core/queue';
@@ -65,6 +66,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   const batchId = opts.batch || latestBatchId(queue.batches.filter((b) => b.id !== 'tasks')) || 'batch-001';
   const tasksDir = join(cfg.queueDir, batchId);
   mkdirSync(tasksDir, { recursive: true });
+  ensureBatchConfig(tasksDir); // 批次「脾气」落盘（幂等：已存在不覆盖）——batch-size/max-attempts/skip-draft 三把默认姿势
   const { readdirSync, statSync, existsSync } = require('fs');
   const typeDef = resolveTaskType(cfg.metaDir, opts.type || 'general');
   // 编号全局递增：跨所有批次（含模块子任务）取最大 +1——每批次从 01 重新编号会让 state 键撞车

@@ -84,6 +84,20 @@ created-at: 2026-10-01
 - `BATCH.md` 放批次目录根下；模块元数据写在 `CONSTRAINTS.md` 顶部 frontmatter（注入 prompt 时自动剥离，只注入约束正文）。
 - 批次/模块的**完成状态与进度不落盘**——从任务状态聚合推导（单一事实源是 state.json）。
 
+### 批次配置（BATCH.yaml）——每个批次的「脾气」
+
+```yaml
+version: 1           # schema 版本戳（升级维护用）
+batch-size: 3        # 每批领取任务数（一次 execute 领几个）
+max-attempts: 3      # 任务失败重试上限（验收不通过累计达上限即 failed）
+skip-draft: false    # 是否跳过 draft 拦停（true = 未澄清也照跑）
+```
+
+- **自动生成**：建批次（`taskq new` 首个批次 / `init`）自动落盘，注释详尽；已存在绝不覆盖（用户手改是最高优先级资产）。
+- **优先级链（每项独立生效）**：CLI 临时指令 > 批次配置 > 系统默认——`taskq execute --batch-size 2` 只当次生效不写回；`taskq ask "一次领 5 个"` 同理。
+- **三级兜底**：文件缺失 → 全默认；内容损坏 → 备份 BATCH.yaml.bak + 告警 + 全默认；单字段异常（负数/非数/类型错）→ 只回落该字段，其余照常生效。
+- **升级维护**：只加键不改语义；旧文件缺新键自动取系统默认，未知键忽略，双向向前兼容，无需迁移脚本。
+
 ### 筛选三扇窗（list / report）
 
 ```bash
