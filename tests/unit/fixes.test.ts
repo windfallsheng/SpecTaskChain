@@ -291,6 +291,21 @@ describe('版本事实源与 init 工具参数', () => {
     expect(out).toContain('Chain = 接力（relay），不是依赖（dependency）。');
   });
 
+  it('已有批次时 init/--update 不复活 batch-001（手动合并/删批次后不回流）', () => {
+    const root = makeCfg().projectRoot;
+    mkdirSync(join(root, 'queue', 'batch-002'), { recursive: true });
+    initCommand(root); // 常规 init
+    expect(existsSync(join(root, 'queue', 'batch-001'))).toBe(false);
+    initCommand(root, { update: true }); // --update 同样不复活
+    expect(existsSync(join(root, 'queue', 'batch-001'))).toBe(false);
+  });
+
+  it('队列完全没有批次区时 init 仍建 batch-001 起步（零起步不受影响）', () => {
+    const root = makeCfg().projectRoot;
+    initCommand(root);
+    expect(existsSync(join(root, 'queue', 'batch-001'))).toBe(true);
+  });
+
   it('initCommand --tools qoder 生成 .qoder/rules/taskq-relay.md（真实产出）', () => {
     const root = makeCfg().projectRoot;
     const out = initCommand(root, { tools: ['qoder'] });
