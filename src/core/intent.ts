@@ -5,7 +5,7 @@ export type IntentId = 'new' | 'clarify' | 'run' | 'execute' | 'pipeline' | 'spl
 export interface IntentResult {
   intent: IntentId;
   confidence: number;
-  params: { taskId?: string; taskName?: string; group?: string; file?: string; target?: string; hard?: boolean };
+  params: { taskId?: string; taskName?: string; group?: string; file?: string; target?: string; hard?: boolean; batchSize?: number };
   fullCommand: string;
   notes: string[];
 }
@@ -91,6 +91,22 @@ const INTENTS: { intent: IntentId; triggers: string[]; patterns: RegExp[]; base:
   },
 ];
 
+/** 中文数字映射（口语批次量词）：一~十，两=二 */
+const CN_DIGIT: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+
+/**
+ * 提取批次大小（execute 专属）：「一次领 5 个」「批量执行三个」「每批 4 个」「--batch-size 8」
+ * 「个」字锚点防误吞任务 ID（「批量执行任务34」无「个」字 → undefined，34 归 taskId）
+ */
+export function parseBatchSize(input: string): number | undefined {
+  const explicit = input.match(/--batch-size\s*=?\s*(\d+)/i);
+  if (explicit) return Math.max(1, parseInt(explicit[1], 10));
+  const m = input.match(/(?:一次领|每批|每一批|批量(?:执行|跑|接力)|领|跑)\s*(\d+|[一二两三四五六七八九十])\s*个/);
+  if (!m) return undefined;
+  if (/^\d+$/.test(m[1])) return Math.max(1, parseInt(m[1], 10));
+  return CN_DIGIT[m[1]];
+}
+
 /** 识别意图：词典匹配 + 优先级加成（按 triggers 定义序） */
 export function recognizeIntent(input: string): IntentResult {
   const lower = input.toLowerCase();
@@ -127,6 +143,11 @@ export function recognizeIntent(input: string): IntentResult {
         const mm = input.match(/(?:放到|放入|放|加入|入|建|到|进)(?:个|一个)?([^\s，,。？?]{1,20})模块/);
         if (mm) params.group = mm[1];
       }
+      // execute 专属：批次大小（「一次领 5 个」→ batchSize=5）；无数量信号留空走默认 3
+      if (def.intent === 'execute') {
+        const n = parseBatchSize(input);
+        if (n) params.batchSize = n;
+      }
       // reset 专属：目标（任务 ID / 模块 / 批次 / --all）+ --hard。
       // 具体目标与全局词同时出现时具体目标优先（「把 34 从头再来」只复位 34，不误伤全队列）
       if (def.intent === 'reset') {
@@ -161,7 +182,10 @@ export function recognizeIntent(input: string): IntentResult {
       }
       break;
     case 'run': best.fullCommand = 'taskq run'; break;
-    case 'execute': best.fullCommand = 'taskq execute'; break;
+    case 'execute':
+      best.fullCommand = p.batchSize ? `taskq execute --batch-size ${p.batchSize}` : 'taskq execute';
+      if (p.batchSize) best.notes.push(`已识别批次大小：一次领取 ${p.batchSize} 个任务`);
+      break;
     case 'pipeline': best.fullCommand = 'taskq pipeline'; break;
     case 'split': best.fullCommand = 'taskq split'; break;
     case 'init': best.fullCommand = 'taskq init'; break;

@@ -113,7 +113,7 @@ taskq run [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
 taskq execute [--batch-size N] [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
 ```
 
-- `--batch-size N`：每批领取的任务数（默认 3）。单 prompt 有防爆限额，批总长可控。
+- `--batch-size N`：每批领取的任务数（默认 3）。单 prompt 有防爆限额，批总长可控。口语入口同样支持：「一次领 5 个」「批量执行三个」（阿拉伯/中文数字均可）。
 - `--batch 批次|all`：聚焦指定批次或全队列（默认最新批次）。
 - `--task ID` / `--module 模块ID`：定向执行（同 run）。
 - 批内首个任务占位 doing 后即拦停：同批内已有任务处于 doing（上一棒未登记）时，先停——账本只能有一个执行者。
@@ -194,6 +194,7 @@ taskq ask "建个任务：写三篇迁移文档"
 taskq ask "拆分任务：写三篇迁移文档"  # split：提取素材后接力（退出码 10）
 taskq ask "跑流水线 docs/新需求.md"  # pipeline：端到端一条龙
 taskq ask "批量执行"                # execute：一次领 N 个完整 prompt
+taskq ask "一次领 5 个"             # execute：口语指定批次大小（--batch-size 5）
 taskq ask "初始化"                  # init
 taskq ask "澄清一下"
 taskq ask "跑队列"

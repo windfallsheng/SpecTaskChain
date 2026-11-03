@@ -197,6 +197,18 @@ describe('intent：口语入口', () => {
     expect(recognizeIntent('批量跑').fullCommand).toBe('taskq execute');
     expect(recognizeIntent('执行').intent).toBe('run'); // 无「批量」信号不误吞
   });
+  it('execute 批次大小提取：阿拉伯/中文数字/显式参数全通，任务 ID 不误吞', () => {
+    expect(recognizeIntent('一次领 5 个').params.batchSize).toBe(5);
+    expect(recognizeIntent('批量执行 3 个任务').params.batchSize).toBe(3);
+    expect(recognizeIntent('批量执行三个').params.batchSize).toBe(3); // 中文数字
+    expect(recognizeIntent('批量跑，每批 4 个').params.batchSize).toBe(4);
+    expect(recognizeIntent('批量跑 --batch-size 8').params.batchSize).toBe(8); // 显式参数
+    expect(recognizeIntent('一次领 5 个').fullCommand).toBe('taskq execute --batch-size 5');
+    expect(recognizeIntent('批量执行').params.batchSize).toBeUndefined(); // 无数量信号 → 默认 3
+    const idOnly = recognizeIntent('批量执行任务34');
+    expect(idOnly.params.batchSize).toBeUndefined(); // 「个」字锚点：34 归 taskId 不误吞
+    expect(idOnly.params.taskId).toBe('34');
+  });
   it('「跑流水线」→ pipeline；「端到端跑一下」→ pipeline；「跑队列」不受影响', () => {
     expect(recognizeIntent('跑流水线').intent).toBe('pipeline');
     expect(recognizeIntent('端到端跑一下').intent).toBe('pipeline');

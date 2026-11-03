@@ -31,7 +31,8 @@ export function askCommand(cfg: TaskQConfig, input: string): AskResult {
       return { output: renderRunResult(r), exitCode: r.exitCode };
     }
     case 'execute': {
-      const r = batchRelay(cfg, {});
+      // 批次大小走意图识别（「一次领 5 个」→ 5），未识别时 undefined 走默认 3
+      const r = batchRelay(cfg, { batchSize: result.params.batchSize });
       return { output: renderBatchResult(r), exitCode: r.exitCode };
     }
     case 'pipeline': {
