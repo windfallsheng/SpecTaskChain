@@ -105,7 +105,7 @@ function renderSkillFiles(tool: string): SkillFile[] {
       '- 退出码 10 → 已领取任务：按 prompt 执行 → done → 继续 run（同一会话优先）',
       '- 退出码 12 → 拦截（draft 未定稿 / doing 占位 / failed 需人工介入）→ 停下向用户说明原因',
       '- 退出码 0 → 队列清空',
-      '- clarify 报告三档：⛔ 阻塞先处理（补 / 给默认值 / 标记 draft / 无视四选一）→ ⚠️ 建议 → 待定',
+      '- clarify 报告四档：⛔ 阻塞先处理（补 / 给默认值 / 标记 draft / 无视四选一）→ ⚠️ 建议 → ⏳ 待定 → 🤖 可执行性风险（认证/权限/物理动作/平台账号/资金合规/外部等待：AI 只能做到闸口，与用户对话确认人机分工——AI 做闸口内，人做闸口外）',
       '- 用户要「网页版 / 可视化」时给对应命令加 --html：clarify --html 体检报告 / report --html 复盘报告 / status --panel 面板 / help guide --html 引导页（生成后 present_files 展示给用户）',
       '',
       '## 验收三闸（done 前机器核对，缺了不算完）',

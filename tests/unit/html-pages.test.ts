@@ -29,6 +29,14 @@ describe('CLARIFY.html：体检三档红黄灰分组', () => {
     expect(html).toContain('border-left-color:#94a3b8'); // 待定灰
   });
 
+  it('可执行性风险（exec）第四档：靛蓝分组 + 统计卡', () => {
+    const html = renderClarifyHtml([{ level: 'exec', taskId: '04-d', message: '可执行性风险（认证凭据）：「扫码」' }]);
+    expect(html).toContain('可执行性风险');
+    expect(html).toContain('🤖');
+    expect(html).toContain('border-left-color:#6366f1'); // exec 靛蓝
+    expect(html).toContain('认证凭据');
+  });
+
   it('无问题时全绿页', () => {
     const html = renderClarifyHtml([]);
     expect(html).toContain('未发现表达不充分之处');

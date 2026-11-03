@@ -19,7 +19,7 @@ function findMetaDir(taskDir: string): string {
 }
 
 export interface ClarifyIssue {
-  level: 'blocking' | 'suggest' | 'pending'; // 阻塞 / 建议 / 待定
+  level: 'blocking' | 'suggest' | 'pending' | 'exec'; // 阻塞 / 建议 / 待定 / 可执行性风险
   taskId: string;
   message: string;
 }
@@ -29,6 +29,79 @@ const VAGUE_WORDS = ['做好', '做好点', '完善', '优化一下', '适当', 
 
 /** 指代不明：执行时 AI 只能靠猜的表达 */
 const AMBIGUOUS_REFS = ['那几个', '相关资料', '这些文件', '那些东西', '那个文件'];
+
+/**
+ * 可执行性风险信号库：CLI 确定性检测 AI 能力圈边界的表达（词表命中，零成本）
+ * 每类 = 风险本质 + 处理建议。命中 → 亮给用户做人机分工决策，不拦接力（exec 档）
+ */
+interface ExecSignal {
+  re: RegExp;
+  label: string;  // 风险类别（同任务同类别只报一次）
+  risk: string;   // 风险本质：AI 卡在哪
+  advice: string; // 处理建议：怎么拆人机分工
+}
+
+const EXEC_SIGNALS: ExecSignal[] = [
+  {
+    re: /登录|扫码|短信验证|验证码|人脸识别|指纹|动态口令|U盾|U 盾|实名认证/,
+    label: '认证凭据',
+    risk: '需要用户在场完成认证（AI 无账号、无生物凭证、收不到验证码）',
+    advice: '拆成人机协作：AI 做到闸口（写好流程/脚本/材料），认证动作由人完成；或补充可用的凭据与测试通道',
+  },
+  {
+    re: /审批|授权书|管理员权限|root|sudo|内部系统|OA|ERP|工单系统/,
+    label: '权限审批',
+    risk: '需要高权限或人工审批（AI 无权限，也不能替人审批）',
+    advice: 'AI 产出申请材料与操作清单，审批/授权由人完成；或明确 AI 可用的权限边界',
+  },
+  {
+    re: /邮寄|快递|跑腿|线下|到店|面对面|盖章|签字|打印|插拔|真机|U盘|U 盘|光盘/,
+    label: '物理动作',
+    risk: '物理动作 AI 没有手（寄件/盖章/插设备等只能人来）',
+    advice: '动作部分由人完成，AI 负责配套产出（如寄件地址核对表、盖章文档准备）',
+  },
+  {
+    re: /公众号后台|小程序后台|应用商店|App Store|Google Play|企业微信|钉钉后台|飞书后台|抖音后台|视频号|微博后台/,
+    label: '平台账号',
+    risk: '需要第三方平台后台账号操作（AI 无平台账号）',
+    advice: 'AI 产出内容与操作步骤，后台操作由人完成；或确认账号归属后补充自动化凭据',
+  },
+  {
+    re: /付款|转账|报销|开发票|发票|合同签署|投标|竞标/,
+    label: '资金合规',
+    risk: '涉及资金/合同/合规动作（AI 不能也不该直接执行）',
+    advice: '拆成两步：AI 准备（对账单/合同稿/投标文件），人审批执行；留痕进验收',
+  },
+  {
+    re: /等审批通过|等对方回复|等客户确认|等待回复|等通知/,
+    label: '外部等待',
+    risk: '依赖外部响应，AI 只能做到闸口（无法催外部世界）',
+    advice: '明确等待节点与超时后的处理；等待期间的任务状态留给用户手动推进',
+  },
+];
+
+/**
+ * 可执行性风险检测：扫 goal + 正文，命中信号库 → exec 档 issue
+ * 同任务同类别只报一次（取首个命中词）
+ */
+export function detectExecRisks(spec: TaskSpec): ClarifyIssue[] {
+  const text = `${spec.goal}\n${spec.body}`;
+  const issues: ClarifyIssue[] = [];
+  const reported = new Set<string>();
+  for (const sig of EXEC_SIGNALS) {
+    if (reported.has(sig.label)) continue;
+    const hit = text.match(sig.re);
+    if (hit) {
+      reported.add(sig.label);
+      issues.push({
+        level: 'exec',
+        taskId: spec.id,
+        message: `可执行性风险（${sig.label}）：「${hit[0]}」——${sig.risk}。建议：${sig.advice}`,
+      });
+    }
+  }
+  return issues;
+}
 
 /**
  * 澄清检测（单任务）：确定性 + 语义两级信号
@@ -81,6 +154,8 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyI
   if (spec.draft) {
     issues.push({ level: 'pending', taskId: spec.id, message: '规格标记为 draft（未澄清/未补全），执行前建议先补全' });
   }
+  // —— 可执行性风险：AI 能力圈边界（认证/权限/物理动作/平台账号/资金合规/外部等待）——
+  issues.push(...detectExecRisks(spec));
   // —— 角色体检：声明了但未定义 → 执行时回退通才，先亮明再跑 ——
   if (spec.role && !resolveTaskRole(findMetaDir(spec.dir), spec.role)) {
     issues.push({ level: 'suggest', taskId: spec.id, message: `角色「${spec.role}」未定义（内置：${listBuiltinRoles().join('/')}）——执行时回退通才；要专业化就补 .taskchain/ROLES/${spec.role}.md 或改 role 字段` });
@@ -206,6 +281,7 @@ export function renderClarifyReport(issues: ClarifyIssue[]): string {
   const blocking = issues.filter((i) => i.level === 'blocking');
   const suggest = issues.filter((i) => i.level === 'suggest');
   const pending = issues.filter((i) => i.level === 'pending');
+  const exec = issues.filter((i) => i.level === 'exec');
   const section = (title: string, list: ClarifyIssue[], icon: string) => {
     if (!list.length) return;
     lines.push(`### ${icon} ${title}（${list.length}）`, '');
@@ -217,7 +293,8 @@ export function renderClarifyReport(issues: ClarifyIssue[]): string {
   section('阻塞', blocking, '⛔');
   section('建议', suggest, '⚠️');
   section('待定', pending, '⏳');
-  lines.push('处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）');
+  section('可执行性风险', exec, '🤖');
+  lines.push('处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险建议拆成人机分工（AI 做闸口内的事，人做闸口外的事）');
   return lines.join('\n');
 }
 
@@ -231,6 +308,7 @@ export function renderClarifyHtml(issues: ClarifyIssue[]): string {
   const blocking = issues.filter((i) => i.level === 'blocking');
   const suggest = issues.filter((i) => i.level === 'suggest');
   const pending = issues.filter((i) => i.level === 'pending');
+  const exec = issues.filter((i) => i.level === 'exec');
   const group = (title: string, icon: string, list: ClarifyIssue[], accent: string) =>
     list.length
       ? `<div class="group" style="border-left-color:${accent}"><h3>${icon} ${title}<span class="badge" style="background:${accent}">${list.length}</span></h3>${list
@@ -238,7 +316,7 @@ export function renderClarifyHtml(issues: ClarifyIssue[]): string {
           .join('')}</div>`
       : '';
   const body = issues.length
-    ? `${group('阻塞（先处理）', '⛔', blocking, '#ef4444')}${group('建议', '⚠️', suggest, '#f59e0b')}${group('待定', '⏳', pending, '#94a3b8')}`
+    ? `${group('阻塞（先处理）', '⛔', blocking, '#ef4444')}${group('建议', '⚠️', suggest, '#f59e0b')}${group('待定', '⏳', pending, '#94a3b8')}${group('可执行性风险', '🤖', exec, '#6366f1')}`
     : '<div class="clean"><div class="big">✅</div><p>未发现表达不充分之处，规格清晰可执行。</p></div>';
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -273,9 +351,10 @@ h1{font-size:26px;margin-bottom:4px}
   <div class="stat"><b style="color:#ef4444">${blocking.length}</b>⛔ 阻塞</div>
   <div class="stat"><b style="color:#f59e0b">${suggest.length}</b>⚠️ 建议</div>
   <div class="stat"><b style="color:#94a3b8">${pending.length}</b>⏳ 待定</div>
+  <div class="stat"><b style="color:#6366f1">${exec.length}</b>🤖 可执行性</div>
 </div>
 ${body}
-${issues.length ? '<div class="tip">处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）</div>' : ''}
+${issues.length ? '<div class="tip">处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险建议拆成人机分工（AI 做闸口内的事，人做闸口外的事）</div>' : ''}
 </body>
 </html>`;
 }
