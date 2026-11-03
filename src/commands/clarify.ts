@@ -1,7 +1,7 @@
 // taskq clarify：随叫随到的体检——用户自己的操作行为，系统只提供入口、检测和报告，从不打断
 // 四入口：写完查（--task/--file）/ 建链前查（--chain 链级体检）/ 翻车时查（无参数整队查）/ 随口查（taskq ask 路由）
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 import { TaskQConfig } from '../core/config';
 import { scanQueue } from '../core/queue';
 import { readSpec, parseFrontmatter, buildSpec } from '../core/task-spec';
@@ -9,6 +9,7 @@ import {
   detectTaskIssues,
   detectChainIssues,
   renderClarifyReport,
+  renderClarifyHtml,
   taskIdFromPath,
   ClarifyIssue,
 } from '../core/clarify';
@@ -17,6 +18,7 @@ export interface ClarifyOptions {
   taskId?: string;  // 单任务（按 ID）
   file?: string;    // 直接指文件（手动写场景：宿主 AI 消解「上面的内容」后传入）
   chain?: boolean;  // 建链前查：只查链级硬伤（依赖悬空/产出冲突/模块约束/命名重复/循环依赖），不逐任务三必填
+  html?: boolean;   // 体检报告 HTML 化（queue/CLARIFY.html，三档红黄灰分组）
 }
 
 export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
@@ -34,10 +36,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     const id = taskIdFromPath(resolved) || '此文件';
     const spec = buildSpec(id, resolved, data, body, 'general');
     issues = detectTaskIssues(spec, cfg.projectRoot);
-    return renderClarifyReport(issues);
-  }
-
-  if (opts.taskId) {
+  } else if (opts.taskId) {
     // 单任务体检（写完即查 / 翻车后查）
     const all = [...queue.tasks, ...queue.modules.flatMap((m) => m.subtasks)];
     const found = all.find((t) => t.id === opts.taskId);
@@ -45,22 +44,28 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
       return `❌ 未找到任务「${opts.taskId}」。可用：taskq list 查看队列清单。`;
     }
     issues = detectTaskIssues(found, cfg.projectRoot);
-    return renderClarifyReport(issues);
-  }
-
-  if (opts.chain) {
+  } else if (opts.chain) {
     // 建链前查：只查链级硬伤（建链前逐任务可能还没写完，不报三必填）
-    return renderClarifyReport(detectChainIssues(queue));
+    issues = detectChainIssues(queue);
+  } else {
+    // 翻车查（无参数）：链级硬伤 + 各任务三必填全量体检
+    if (!queue.tasks.length && !queue.modules.length) {
+      return '队列还是空的。先建任务：taskq new "任务描述"';
+    }
+    issues = [...detectChainIssues(queue)];
+    for (const t of queue.tasks) issues.push(...detectTaskIssues(t, cfg.projectRoot));
+    for (const m of queue.modules) {
+      for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot));
+    }
   }
 
-  // 翻车查（无参数）：链级硬伤 + 各任务三必填全量体检
-  issues = [...detectChainIssues(queue)];
-  for (const t of queue.tasks) issues.push(...detectTaskIssues(t, cfg.projectRoot));
-  for (const m of queue.modules) {
-    for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot));
-  }
-  if (!queue.tasks.length && !queue.modules.length) {
-    return '队列还是空的。先建任务：taskq new "任务描述"';
+  // --html：体检报告可视化（三档红黄灰分组卡片）；终端文本照旧可读
+  if (opts.html) {
+    const htmlPath = join(cfg.queueDir, 'CLARIFY.html');
+    mkdirSync(dirname(htmlPath), { recursive: true });
+    writeFileSync(htmlPath, renderClarifyHtml(issues), 'utf-8');
+    const head = renderClarifyReport(issues).split('\n').slice(0, 6).join('\n');
+    return `🩺 体检报告已生成：${htmlPath}\n\n${head}\n...`;
   }
   return renderClarifyReport(issues);
 }

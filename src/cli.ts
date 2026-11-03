@@ -76,7 +76,7 @@ function main(): void {
         break;
       }
       case 'clarify':
-        output = clarifyCommand(cfg, { taskId: flag('--task'), file: flag('--file'), chain: hasFlag('--chain') });
+        output = clarifyCommand(cfg, { taskId: flag('--task'), file: flag('--file'), chain: hasFlag('--chain'), html: hasFlag('--html') });
         break;
       case 'run': {
         // 退出码协议：0 队列清空 / 10 接力（宿主 AI 执行）/ 12 拦截（draft/模块缺共享 spec/doing 进行中/failed 需人工介入）——直接传播给宿主
@@ -129,7 +129,7 @@ function main(): void {
         output = statusCommand(cfg, { panel: hasFlag('--panel'), batch: flag('--batch') });
         break;
       case 'report':
-        output = reportCommand(cfg, { batch: flag('--batch'), status: flag('--status'), type: flag('--type') });
+        output = reportCommand(cfg, { batch: flag('--batch'), status: flag('--status'), type: flag('--type'), html: hasFlag('--html') });
         break;
       case 'ask': {
         const input = rest.join(' ');

@@ -221,6 +221,65 @@ export function renderClarifyReport(issues: ClarifyIssue[]): string {
   return lines.join('\n');
 }
 
+/** HTML 转义：体检消息含任务 ID 与路径（内容不受控） */
+function escHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+/** 体检报告 HTML（taskq clarify --html）：三档红黄灰分组卡片，与 PANEL.html 同视觉语言 */
+export function renderClarifyHtml(issues: ClarifyIssue[]): string {
+  const blocking = issues.filter((i) => i.level === 'blocking');
+  const suggest = issues.filter((i) => i.level === 'suggest');
+  const pending = issues.filter((i) => i.level === 'pending');
+  const group = (title: string, icon: string, list: ClarifyIssue[], accent: string) =>
+    list.length
+      ? `<div class="group" style="border-left-color:${accent}"><h3>${icon} ${title}<span class="badge" style="background:${accent}">${list.length}</span></h3>${list
+          .map((i) => `<div class="item"><b>${escHtml(i.taskId)}</b><p>${escHtml(i.message)}</p></div>`)
+          .join('')}</div>`
+      : '';
+  const body = issues.length
+    ? `${group('阻塞（先处理）', '⛔', blocking, '#ef4444')}${group('建议', '⚠️', suggest, '#f59e0b')}${group('待定', '⏳', pending, '#94a3b8')}`
+    : '<div class="clean"><div class="big">✅</div><p>未发现表达不充分之处，规格清晰可执行。</p></div>';
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpecTaskChain 体检报告</title>
+<style>
+body{font-family:'PingFang SC','Hiragino Sans GB',sans-serif;margin:40px auto;max-width:820px;padding:0 20px;color:#1e293b;background:#f8fafc;line-height:1.7}
+h1{font-size:26px;margin-bottom:4px}
+.sub{color:#64748b;font-size:13px;margin-bottom:22px}
+.stats{display:flex;gap:14px;margin-bottom:22px;flex-wrap:wrap}
+.stat{background:#fff;border-radius:10px;padding:10px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:14px}
+.stat b{font-size:18px;margin-right:4px}
+.group{background:#fff;border-left:4px solid;border-radius:10px;padding:8px 18px;margin:12px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.group h3{font-size:15px;margin:10px 0;color:#334155;display:flex;align-items:center;gap:8px}
+.badge{color:#fff;font-size:12px;border-radius:9px;padding:1px 8px;font-weight:700}
+.item{padding:7px 0;border-top:1px solid #f1f5f9}
+.item:first-of-type{border-top:none}
+.item b{font-size:13px;color:#1d4ed8}
+.item p{margin:3px 0 0;font-size:13.5px}
+.clean{background:#fff;border-radius:10px;padding:40px 20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.clean .big{font-size:44px}
+.clean p{color:#64748b;font-size:14px;margin:8px 0 0}
+.tip{color:#64748b;font-size:13px;margin-top:18px;border-top:1px solid #e2e8f0;padding-top:12px}
+</style>
+</head>
+<body>
+<h1>🩺 澄清体检报告</h1>
+<div class="sub">生成于 ${new Date().toLocaleString('zh-CN')} · 随叫随到的体检，处理权在你</div>
+<div class="stats">
+  <div class="stat"><b style="color:#ef4444">${blocking.length}</b>⛔ 阻塞</div>
+  <div class="stat"><b style="color:#f59e0b">${suggest.length}</b>⚠️ 建议</div>
+  <div class="stat"><b style="color:#94a3b8">${pending.length}</b>⏳ 待定</div>
+</div>
+${body}
+${issues.length ? '<div class="tip">处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）</div>' : ''}
+</body>
+</html>`;
+}
+
 /** 链级体检（--chain 与无参数共用）：只查链执行必翻车的硬伤（依赖悬空/产出冲突/模块约束/命名重复/循环依赖） */
 export function detectChainIssues(queue: QueueScan): ClarifyIssue[] {
   return [

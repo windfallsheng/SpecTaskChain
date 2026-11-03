@@ -76,7 +76,7 @@ taskq new <描述> [--name 目录名] [--type 类型] [--group 模块名] [--dra
 随叫随到的体检（详见 [clarify.md](clarify.md)）。
 
 ```
-taskq clarify [--task 任务ID] [--file SPEC路径] [--chain]
+taskq clarify [--task 任务ID] [--file SPEC路径] [--chain] [--html]
 ```
 
 | 参数 | 说明 |
@@ -84,6 +84,7 @@ taskq clarify [--task 任务ID] [--file SPEC路径] [--chain]
 | `--task <id>` | 体检单个任务（写完查） |
 | `--file <path>` | 体检任意 SPEC.md 文件（未入队也行） |
 | `--chain` | 链级体检（建链查）：依赖悬空 + 产出冲突 + 模块约束 + 命名重复 + 循环依赖——只查链执行必翻车的硬伤，不逐任务报三必填（建链前任务可能还没写完） |
+| `--html` | 体检报告可视化：queue/CLARIFY.html（三档红黄灰分组卡片） |
 | （无参数） | 全队列体检（翻车查）：链级硬伤 + 各任务三必填全量 |
 
 ## taskq run
@@ -175,6 +176,14 @@ taskq status [--panel]
 ## taskq report
 
 队列报告（执行留痕，有账可查）：每个任务的尝试次数、验收结论、完成时间。
+
+```
+taskq report [--batch 批次] [--status 状态] [--type 类型] [--html]
+```
+
+| 参数 | 说明 |
+| :--- | :--- |
+| `--html` | 复盘报告可视化：queue/REPORT.html（状态分布 + 执行记录 + 失败红卡） |
 
 ## taskq ask
 
