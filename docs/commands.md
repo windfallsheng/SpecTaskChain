@@ -47,7 +47,7 @@ taskq init --update --tools qoder       # 只刷新 qoder 的规则文件
 | trae | `.trae/rules/taskq-relay.md` | 独立文件 |
 | codex | `AGENTS.md` | 追加锚点块（已有内容保留） |
 
-SKILL 入口（命令下拉可见，薄包装对齐 speccore ask）：qoder → `.agents/skills/taskq/SKILL.md`、claude → `.claude/skills/taskq/SKILL.md`、cursor → `.cursor/skills/taskq/SKILL.md`；windsurf/trae 无项目级 skill 约定，仅生成规则文件。
+SKILL 入口（命令下拉可见，薄包装对齐 speccore ask）：总入口 `/taskq-ask` + 高频专属 `/taskq-new /taskq-run /taskq-clarify /taskq-done`，共 5 个。qoder → `.agents/skills/`、claude → `.claude/skills/`、cursor → `.cursor/skills/`（各 5 个 SKILL.md）；windsurf/trae 无项目级 skill 约定，仅生成规则文件。旧版总入口 `taskq`（≤0.2.8）在 init/--update 时自动迁移清理为 `taskq-ask`。
 
 ## taskq new
 
@@ -178,10 +178,14 @@ taskq status [--panel]
 
 ## taskq ask
 
-自然语言入口：意图识别 + 参数提取 + 精确执行。
+自然语言入口：意图识别 + 参数提取 + 精确执行。识别全部 CLI 命令（init/new/split/clarify/run/execute/pipeline/reset/done/list/status/report）。
 
 ```
 taskq ask "建个任务：写三篇迁移文档"
+taskq ask "拆分任务：写三篇迁移文档"  # split：提取素材后接力（退出码 10）
+taskq ask "跑流水线 docs/新需求.md"  # pipeline：端到端一条龙
+taskq ask "批量执行"                # execute：一次领 N 个完整 prompt
+taskq ask "初始化"                  # init
 taskq ask "澄清一下"
 taskq ask "跑队列"
 taskq ask "重跑 34-cshidaima"     # 重跑复位：定向任务/模块/批次/--all，--hard 连留痕清空
@@ -192,4 +196,4 @@ taskq ask "出个报告"
 
 重跑说法识别：「重跑/重新执行/重做/重来/复位/重置」→ reset；「继续跑/接着跑/重新开始执行」→ run；「重新建个任务」→ new（互不误吞）。无目标时不猜只给用法。
 
-识别失败时输出可用命令与话术示例。识别到的意图路由：clarify / run / reset / status / report / list / new / done。
+识别失败时输出可用命令与话术示例。识别到的意图路由：clarify / run / execute / pipeline / split / init / status / report / list / new / done / reset。

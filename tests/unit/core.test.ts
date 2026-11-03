@@ -13,6 +13,18 @@ import {
 import { runAcceptance } from '../../src/core/acceptance';
 import { recognizeIntent } from '../../src/core/intent';
 import { buildExecutionSequence } from '../../src/core/queue';
+import { askCommand } from '../../src/commands/ask';
+import { TaskQConfig } from '../../src/core/config';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+
+/** 临时队列根（ask 层测试：真实落盘到 tmp 目录） */
+function askCfg(): TaskQConfig {
+  const root = mkdtempSync(join(tmpdir(), 'stc-ask-'));
+  mkdirSync(join(root, 'queue', 'batch-001'), { recursive: true });
+  return { projectRoot: root, queueDir: join(root, 'queue'), metaDir: join(root, 'queue', '.taskchain') };
+}
 
 describe('task-spec：frontmatter 三必填 + 正文自由', () => {
   const SAMPLE = `---
@@ -173,6 +185,64 @@ describe('intent：口语入口', () => {
     const r = recognizeIntent('写登录接口，放认证模块');
     expect(r.intent).toBe('new');
     expect(r.params.group).toBe('认证');
+  });
+  it('「拆分任务：写三篇迁移文档」→ split；「切分文档」→ split；「拆解问题」不误吞', () => {
+    expect(recognizeIntent('拆分任务：写三篇迁移文档').intent).toBe('split');
+    expect(recognizeIntent('切分文档').intent).toBe('split');
+    expect(recognizeIntent('拆解问题').intent).toBe('help'); // 「拆」字单独不进 trigger
+  });
+  it('「批量执行」→ execute；「一次领 3 个」→ execute；单独「执行」仍归 run', () => {
+    expect(recognizeIntent('批量执行').intent).toBe('execute');
+    expect(recognizeIntent('一次领 3 个').intent).toBe('execute');
+    expect(recognizeIntent('批量跑').fullCommand).toBe('taskq execute');
+    expect(recognizeIntent('执行').intent).toBe('run'); // 无「批量」信号不误吞
+  });
+  it('「跑流水线」→ pipeline；「端到端跑一下」→ pipeline；「跑队列」不受影响', () => {
+    expect(recognizeIntent('跑流水线').intent).toBe('pipeline');
+    expect(recognizeIntent('端到端跑一下').intent).toBe('pipeline');
+    expect(recognizeIntent('跑队列').intent).toBe('run'); // 边界不受影响
+  });
+  it('「初始化」→ init；英文 initialization 不误吞（词边界）', () => {
+    expect(recognizeIntent('初始化').intent).toBe('init');
+    expect(recognizeIntent('初始化项目').fullCommand).toBe('taskq init');
+    expect(recognizeIntent('initialization').intent).toBe('help'); // \binit\b 不匹配长词
+  });
+});
+
+describe('ask：素材提取与退出码传播（防 \\s 转义回归，素材必须真实提取）', () => {
+  it('「拆分任务：写三篇迁移文档」→ split 提取素材（exitCode 10，输出含素材原文）', () => {
+    const r = askCommand(askCfg(), '拆分任务：写三篇迁移文档');
+    expect(r.exitCode).toBe(10);
+    expect(r.output).toContain('写三篇迁移文档');
+  });
+  it('「拆分任务」无素材 → 给用法（exitCode 0，不猜不执行）', () => {
+    const r = askCommand(askCfg(), '拆分任务');
+    expect(r.exitCode).toBe(0);
+    expect(r.output).toContain('用法');
+  });
+  it('「跑流水线 docs/新需求.md」→ pipeline 提取文件素材（exitCode 10，文件被采集）', () => {
+    const cfg = askCfg();
+    mkdirSync(join(cfg.projectRoot, 'docs'), { recursive: true });
+    writeFileSync(join(cfg.projectRoot, 'docs', '新需求.md'), '# 新需求\n- 登录页', 'utf-8');
+    // CLI 约定 cwd=项目根，测试传绝对路径对齐真实运行（相对路径按 cwd 解析）
+    const r = askCommand(cfg, `跑流水线 ${join(cfg.projectRoot, 'docs', '新需求.md')}`);
+    expect(r.exitCode).toBe(10);
+    expect(r.output).toContain('素材采集完成');
+  });
+  it('「跑流水线」无素材 → 给用法（exitCode 0）', () => {
+    const r = askCommand(askCfg(), '跑流水线');
+    expect(r.exitCode).toBe(0);
+    expect(r.output).toContain('用法');
+  });
+  it('「建个任务：写三篇文档」→ new 提取 goal（任务 slug 不含「任务：」前缀残渣）', () => {
+    const r = askCommand(askCfg(), '建个任务：写三篇文档');
+    expect(r.exitCode).toBe(0);
+    expect(r.output).toContain('xiesanpianwendang'); // goal 干净提取才 slug 对
+  });
+  it('未识别兜底 → exitCode 0 且提示可用命令', () => {
+    const r = askCommand(askCfg(), '今天天气怎么样');
+    expect(r.exitCode).toBe(0);
+    expect(r.output).toContain('意图未识别');
   });
 });
 

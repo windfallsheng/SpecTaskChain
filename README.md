@@ -42,7 +42,7 @@ taskq run                                           # 无人值守接力：输�
 taskq done 01-qianyiwendang --verdict "pass 结构清晰"  # 验收登记（产物/断言/评审三态门禁）
 taskq status --panel                                # 队列总览 + HTML 可视化面板
 taskq report                                        # 队列报告（执行留痕，有账可查）
-taskq ask "看下进度"                                 # 口语入口
+taskq ask "看下进度"                                 # 口语入口（识别全部命令：建/拆/流水线/批量/重跑/看）
 ```
 
 ## 命令速查
@@ -60,7 +60,7 @@ taskq ask "看下进度"                                 # 口语入口
 | `taskq list [--batch 批次] [--status 状态] [--type 类型]` | 队列清单（按批次分组，三扇窗筛选） |
 | `taskq status [--panel] [--batch 批次\|all]` | 队列总览（--panel 生成 HTML 可视化面板） |
 | `taskq report [--batch 批次] [--status 状态] [--type 类型]` | 队列报告（执行留痕，有账可查） |
-| `taskq ask "自然语言"` | 口语入口（建任务/澄清/跑队列/看进度） |
+| `taskq ask "自然语言"` | 口语入口（建任务/拆分/流水线/批量执行/澄清/跑队列/重跑/看进度/报告） |
 
 完整参数与行为见 [docs/commands.md](docs/commands.md)。
 

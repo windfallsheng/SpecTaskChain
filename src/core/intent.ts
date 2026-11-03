@@ -1,6 +1,6 @@
 // ask 意图识别：词典匹配为主（口语入口，零学习成本）
 // 宿主 AI 负责指代消解（「上面的内容」→ 文件路径），CLI 负责意图 + 参数提取 + 精确执行
-export type IntentId = 'new' | 'clarify' | 'run' | 'status' | 'report' | 'list' | 'done' | 'reset' | 'help';
+export type IntentId = 'new' | 'clarify' | 'run' | 'execute' | 'pipeline' | 'split' | 'init' | 'status' | 'report' | 'list' | 'done' | 'reset' | 'help';
 
 export interface IntentResult {
   intent: IntentId;
@@ -24,6 +24,27 @@ const INTENTS: { intent: IntentId; triggers: string[]; patterns: RegExp[]; base:
     base: 70,
     triggers: ['澄清', '帮我澄清', '检查规格', '看看规格', '写得行不行', '写清楚了吗', '规格有没有问题', 'clarify'],
     patterns: [/澄清(?:一下)?(.+)?/, /检查(?:一下)?(.+)规格/, /(.+)写(?:得|的)(?:行不行|清楚了吗)/],
+  },
+  {
+    // 端到端流水线：素材进 → 任务出 → 执行完——「跑流水线/一条龙/端到端」信号明确，独立于 run 的单任务接力
+    intent: 'pipeline',
+    base: 68,
+    triggers: ['流水线', 'pipeline', '端到端', '一条龙'],
+    patterns: [/流水线/, /一条龙/],
+  },
+  {
+    // 文档拆任务：拆分是宿主 AI 的语义活（CLI 读文档钉边界），「拆分/切分」含建任务的近义但动作不同，须独立成意图
+    intent: 'split',
+    base: 66,
+    triggers: ['拆分', '切分', '拆任务', '切任务', '拆文档', 'split'],
+    patterns: [/拆(?:分|任务|文档)/, /切(?:分|任务)/],
+  },
+  {
+    // 批次接力：run 的批量化（一次领 N 个完整 prompt）——「批量/一次领」是关键信号，单独「执行」仍归 run
+    intent: 'execute',
+    base: 66,
+    triggers: ['批量执行', '批量跑', '批量接力', '一次领', '领任务', 'execute'],
+    patterns: [/批量(?:执行|跑|接力)/, /一次领/],
   },
   {
     intent: 'new',
@@ -60,6 +81,13 @@ const INTENTS: { intent: IntentId; triggers: string[]; patterns: RegExp[]; base:
     base: 60,
     triggers: ['完成了', '做完了', '登记验收', '任务完成'],
     patterns: [/(.+)完成了/, /(.+)做完了/],
+  },
+  {
+    // 初始化：低优先级兜底（base 最低），英文 init 用词边界防「initialization」误吞
+    intent: 'init',
+    base: 58,
+    triggers: ['初始化'],
+    patterns: [/初始化/, /\binit\b/i],
   },
 ];
 
@@ -133,6 +161,10 @@ export function recognizeIntent(input: string): IntentResult {
       }
       break;
     case 'run': best.fullCommand = 'taskq run'; break;
+    case 'execute': best.fullCommand = 'taskq execute'; break;
+    case 'pipeline': best.fullCommand = 'taskq pipeline'; break;
+    case 'split': best.fullCommand = 'taskq split'; break;
+    case 'init': best.fullCommand = 'taskq init'; break;
     case 'status': best.fullCommand = 'taskq status'; break;
     case 'report': best.fullCommand = 'taskq report'; break;
     case 'list': best.fullCommand = 'taskq list'; break;

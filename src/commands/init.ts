@@ -1,7 +1,7 @@
 // taskq init：初始化队列骨架（幂等）+ 生成宿主工具接力规则；--update 增量升级（对齐 speccore 惯例）
 import { resolveConfig, ensureStructure } from '../core/config';
 import { readVersion } from '../core/version';
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, readFileSync, existsSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
 
 /** 宿主工具 → 接力规则文件路径（相对项目根）。claude/codex 为追加式，其余为独立规则文件 */
@@ -16,9 +16,9 @@ const TOOL_RULES: Record<string, string> = {
 
 /** 宿主工具 → SKILL 主入口路径（薄包装：意图透传 + 输出标记处理协议，对齐 speccore ask）。仅支持有项目级 skill 约定的工具 */
 const TOOL_SKILLS: Record<string, string> = {
-  qoder: '.agents/skills/taskq/SKILL.md',
-  claude: '.claude/skills/taskq/SKILL.md',
-  cursor: '.cursor/skills/taskq/SKILL.md',
+  qoder: '.agents/skills/taskq-ask/SKILL.md',
+  claude: '.claude/skills/taskq-ask/SKILL.md',
+  cursor: '.cursor/skills/taskq-ask/SKILL.md',
 };
 
 /** 宿主工具 → skill 根目录（主入口 + 4 个高频专属都平铺在该目录下） */
@@ -63,18 +63,18 @@ function renderSkillFiles(tool: string): SkillFile[] {
   const noScope = '以下情况明确不触发（走正常 AI 对话）：解释代码逻辑、审查代码片段、讨论需求合理性、排查具体 bug、一般性技术咨询、算法实现、架构讨论、任何不涉及 taskq CLI 执行的请求。';
 
   const main: SkillFile = {
-    rel: rel('taskq'),
+    rel: rel('taskq-ask'),
     content: [
-      skillFm('taskq', [
+      skillFm('taskq-ask', [
         'SpecTaskChain 任务队列总入口。仅在用户明确要求通过 taskq 命令行工具操作任务队列时触发：',
         '建任务（new，对话成规格）、文档拆任务（split）、端到端流水线（pipeline）、',
         '体检（clarify）、无人值守接力（run/execute）、验收登记（done）、重跑复位（reset）、',
         '队列查看（status/list/report）、初始化（init）。',
-        '高频操作有专属入口：/taskq-new /taskq-run /taskq-clarify /taskq-done。',
+        '高频操作有专属入口：/taskq-new /taskq-run /taskq-clarify /taskq-done；本入口 /taskq-ask 与它们同构（对齐 speccore 的 spec-ask 引擎 + 专属双模式）。',
         noScope,
       ].join('\n')),
       '',
-      '# taskq — 任务队列执行引擎（薄包装，对齐 speccore ask）',
+      '# taskq-ask — 任务队列执行引擎（薄包装，对齐 speccore ask）',
       '',
       '直接执行：execute_command("taskq ask \'用户原话\'")\n\n不要输出命令文本，不要自行分析意图，一切交给 taskq ask 做意图识别与参数提取；ask 识别不出时，按下方命令表直接执行对应命令。',
       '',
@@ -116,7 +116,7 @@ function renderSkillFiles(tool: string): SkillFile[] {
   const sub = (name: string, title: string, trigger: string, exec: string, body: string[]): SkillFile => ({
     rel: rel(name),
     content: [
-      skillFm(name, [trigger, '总入口 /taskq 兜底。', noScope].join('\n')),
+      skillFm(name, [trigger, '总入口 /taskq-ask 兜底。', noScope].join('\n')),
       '',
       `# ${title}（薄包装，专属高频入口）`,
       '',
@@ -154,6 +154,9 @@ function renderSkillFiles(tool: string): SkillFile[] {
 /** 写全部 SKILL 文件（总入口 + 专属），返回生成的相对路径列表；无 skill 约定的工具（windsurf/trae/codex）跳过 */
 function writeToolSkills(projectRoot: string, tool: string): string[] {
   if (!TOOL_SKILL_DIRS[tool]) return [];
+  // 旧版总入口叫 taskq（≤0.2.8），0.2.9 起更名 taskq-ask 对齐 spec-ask——迁移时清理旧目录防幽灵入口
+  const legacyMain = join(projectRoot, TOOL_SKILL_DIRS[tool], 'taskq');
+  if (existsSync(legacyMain)) rmSync(legacyMain, { recursive: true, force: true });
   const files = renderSkillFiles(tool);
   for (const f of files) {
     const target = join(projectRoot, f.rel);
@@ -297,7 +300,7 @@ export function initCommand(cwd: string, opts: InitOptions = {}): string {
       const skillRels = writeToolSkills(cfg.projectRoot, tool);
       lines.push('', `  ✅ 已生成 ${tool} 的宿主接力规则：${rel}（重复执行 init 即刷新）`);
       if (skillRels.length > 0) {
-        lines.push(`  ✅ 已生成 ${tool} 的 SKILL 入口 ${skillRels.length} 个（命令下拉可见 /taskq 及 /taskq-new /taskq-run /taskq-clarify /taskq-done；重复执行 init 即刷新）`);
+        lines.push(`  ✅ 已生成 ${tool} 的 SKILL 入口 ${skillRels.length} 个（命令下拉可见 /taskq-ask 及 /taskq-new /taskq-run /taskq-clarify /taskq-done；重复执行 init 即刷新）`);
       }
     }
   }

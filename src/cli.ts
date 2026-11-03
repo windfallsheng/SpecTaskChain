@@ -160,7 +160,13 @@ function main(): void {
         break;
       case 'ask': {
         const input = rest.join(' ');
-        output = input ? askCommand(cfg, input) : helpText();
+        if (input) {
+          const r = askCommand(cfg, input);
+          output = r.output;
+          process.exitCode = r.exitCode || 0; // 接力类意图（run/execute/split/pipeline）必须传播退出码给宿主
+        } else {
+          output = helpText();
+        }
         break;
       }
       case 'help':
