@@ -9,6 +9,7 @@ import { reportCommand } from './report';
 import { listCommand } from './list';
 import { initCommand } from './init';
 import { newCommand } from './new';
+import { resetCommand } from './reset';
 
 export function askCommand(cfg: TaskQConfig, input: string): string {
   const result = recognizeIntent(input);
@@ -39,7 +40,15 @@ export function askCommand(cfg: TaskQConfig, input: string): string {
       });
     case 'done':
       return `任务完成登记：taskq done ${result.params.taskId || '<task-id>'} --verdict "pass 评审结论"`;
+    case 'reset': {
+      // 目标来自专向提取（taskId 兼容），无目标时不执行只给用法（复位全队列是重操作，绝不猜测）
+      const target = result.params.target || result.params.taskId;
+      if (!target) {
+        return '重跑复位：请指定目标——任务ID / 模块ID / batch-NNN / --all（可选 --hard 连留痕清空=从头再来）。\n\n示例：\n  taskq reset 34-cshidaima\n  taskq reset module-yingxiaomokuai\n  taskq reset --all --hard';
+      }
+      return resetCommand(cfg, target, { hard: result.params.hard });
+    }
     default:
-      return `意图未识别：「${input}」\n\n可用命令：\n  taskq init / new / clarify / run / done / list / status / report / ask\n或直接说：\n  「建个任务：写三篇迁移文档」\n  「澄清上面的内容」\n  「跑队列」「看下进度」「出个报告」`;
+      return `意图未识别：「${input}」\n\n可用命令：\n  taskq init / new / clarify / run / reset / done / list / status / report / ask\n或直接说：\n  「建个任务：写三篇迁移文档」\n  「澄清上面的内容」\n  「跑队列」「重跑 34-cshidaima」「从头再来」「看下进度」「出个报告」`;
   }
 }

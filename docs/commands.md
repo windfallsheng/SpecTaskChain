@@ -184,8 +184,12 @@ taskq status [--panel]
 taskq ask "建个任务：写三篇迁移文档"
 taskq ask "澄清一下"
 taskq ask "跑队列"
+taskq ask "重跑 34-cshidaima"     # 重跑复位：定向任务/模块/批次/--all，--hard 连留痕清空
+taskq ask "从头再来"              # = reset --all --hard（连留痕清空全队列）
 taskq ask "看下进度"
 taskq ask "出个报告"
 ```
 
-识别失败时输出可用命令与话术示例。识别到的意图路由：clarify / run / status / report / list / new / done。
+重跑说法识别：「重跑/重新执行/重做/重来/复位/重置」→ reset；「继续跑/接着跑/重新开始执行」→ run；「重新建个任务」→ new（互不误吞）。无目标时不猜只给用法。
+
+识别失败时输出可用命令与话术示例。识别到的意图路由：clarify / run / reset / status / report / list / new / done。

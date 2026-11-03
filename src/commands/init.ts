@@ -186,7 +186,7 @@ function renderRuleSection(tool: string): string {
     'goal（任务目标）/ output（产物路径）/ acceptance（验收三态）',
     '',
     '### 常用命令',
-    '`taskq status` `taskq list` `taskq clarify` `taskq report` `taskq new "描述"`',
+    '`taskq status` `taskq list` `taskq clarify` `taskq report` `taskq new "描述"` `taskq reset <id|模块|批次|--all>`',
   ].join('\n');
 }
 

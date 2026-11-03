@@ -1,16 +1,24 @@
 // ask 意图识别：词典匹配为主（口语入口，零学习成本）
 // 宿主 AI 负责指代消解（「上面的内容」→ 文件路径），CLI 负责意图 + 参数提取 + 精确执行
-export type IntentId = 'new' | 'clarify' | 'run' | 'status' | 'report' | 'list' | 'done' | 'help';
+export type IntentId = 'new' | 'clarify' | 'run' | 'status' | 'report' | 'list' | 'done' | 'reset' | 'help';
 
 export interface IntentResult {
   intent: IntentId;
   confidence: number;
-  params: { taskId?: string; taskName?: string; group?: string; file?: string };
+  params: { taskId?: string; taskName?: string; group?: string; file?: string; target?: string; hard?: boolean };
   fullCommand: string;
   notes: string[];
 }
 
 const INTENTS: { intent: IntentId; triggers: string[]; patterns: RegExp[]; base: number }[] = [
+  {
+    // 重跑复位：最高优先级——「重跑/重新执行」信号极强，必须压过 done 的「做完了重新跑」复合句；
+    // 边界：「继续跑/接着跑」无「重」字归 run，「重新建任务/重建任务」含「建」字归 new，互不误吞
+    intent: 'reset',
+    base: 74,
+    triggers: ['重新执行', '从头再来', '全部重来', '重新跑', '再跑一遍', '重跑', '重做', '重新做', '重来', '复位', '重置', 'reset'],
+    patterns: [/重(?:新)?(?:跑|执行|做|来)/, /从头再来/, /全部重来/, /再跑一遍/, /复(?:位|置)/],
+  },
   {
     intent: 'clarify',
     base: 70,
@@ -86,6 +94,17 @@ export function recognizeIntent(input: string): IntentResult {
         const mm = input.match(/(?:放到|放入|放|加入|入|建|到|进)([^\s，,。？?]{1,20})模块/);
         if (mm) params.group = mm[1];
       }
+      // reset 专属：目标（任务 ID / 模块 / 批次 / --all）+ --hard。
+      // 具体目标与全局词同时出现时具体目标优先（「把 34 从头再来」只复位 34，不误伤全队列）
+      if (def.intent === 'reset') {
+        const idHit = input.match(/(?:task|任务)[- _]?([a-zA-Z0-9_-]+)|(\d{2,3}-[a-z0-9_-]+|module-[a-z0-9_-]+|batch-\d+)/i);
+        const hardAll = /(?:从头再来|全部重来)/.test(input);
+        const softAll = /(?:重跑全部|全部重跑)/.test(input);
+        if (idHit) params.target = idHit[1] || idHit[2];
+        else if (hardAll) { params.target = '--all'; params.hard = true; }
+        else if (softAll) params.target = '--all';
+        if (/--hard|彻底重来|连留痕/.test(input)) params.hard = true;
+      }
       best = { intent: def.intent, confidence, params, fullCommand: '', notes };
     }
   }
@@ -115,6 +134,13 @@ export function recognizeIntent(input: string): IntentResult {
     case 'done':
       best.fullCommand = p.taskId ? `taskq done ${p.taskId}` : 'taskq done <task-id>';
       break;
+    case 'reset': {
+      const parts = ['taskq reset'];
+      if (p.target || p.taskId) parts.push(p.target || p.taskId!);
+      if (p.hard) parts.push('--hard');
+      best.fullCommand = parts.join(' ');
+      break;
+    }
     default: best.fullCommand = 'taskq help';
   }
   return best;

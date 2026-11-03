@@ -122,6 +122,45 @@ describe('intent：口语入口', () => {
     expect(recognizeIntent('跑队列').intent).toBe('run');
     expect(recognizeIntent('看下进度').intent).toBe('status');
   });
+  it('「重跑 34-cshidaima」→ reset 且提取目标；「重新执行」→ reset 无目标不猜', () => {
+    const r = recognizeIntent('重跑 34-cshidaima');
+    expect(r.intent).toBe('reset');
+    expect(r.params.target).toBe('34-cshidaima');
+    expect(r.fullCommand).toBe('taskq reset 34-cshidaima');
+    const noTarget = recognizeIntent('重新执行一下');
+    expect(noTarget.intent).toBe('reset');
+    expect(noTarget.params.target).toBeUndefined();
+  });
+  it('「从头再来」→ reset --all --hard；「重跑全部」→ reset --all 软复位', () => {
+    const hard = recognizeIntent('从头再来');
+    expect(hard.intent).toBe('reset');
+    expect(hard.params.target).toBe('--all');
+    expect(hard.params.hard).toBe(true);
+    expect(hard.fullCommand).toBe('taskq reset --all --hard');
+    const soft = recognizeIntent('全部重跑');
+    expect(soft.intent).toBe('reset');
+    expect(soft.params.target).toBe('--all');
+    expect(soft.params.hard).toBeUndefined();
+  });
+  it('「重置 module-yingxiaomokuai」→ 模块定向；「重跑 batch-002」→ 批次定向；--hard 显式传递', () => {
+    expect(recognizeIntent('重置 module-yingxiaomokuai').params.target).toBe('module-yingxiaomokuai');
+    expect(recognizeIntent('重跑 batch-002').params.target).toBe('batch-002');
+    const h = recognizeIntent('重跑 34-cshidaima --hard');
+    expect(h.params.hard).toBe(true);
+    expect(h.fullCommand).toBe('taskq reset 34-cshidaima --hard');
+  });
+  it('「做完了重新跑一遍」→ reset 压过 done；「把 34 从头再来」具体目标优先不误伤全队列', () => {
+    expect(recognizeIntent('做完了重新跑一遍').intent).toBe('reset');
+    const r = recognizeIntent('把 34-cshidaima 从头再来');
+    expect(r.intent).toBe('reset');
+    expect(r.params.target).toBe('34-cshidaima');
+  });
+  it('边界不误吞：「继续跑」「接着跑」「重新开始执行」→ run；「重新建个任务」→ new', () => {
+    expect(recognizeIntent('继续跑').intent).toBe('run');
+    expect(recognizeIntent('接着跑队列').intent).toBe('run');
+    expect(recognizeIntent('重新开始执行').intent).toBe('run');
+    expect(recognizeIntent('重新建个任务：写文档').intent).toBe('new');
+  });
 });
 
 describe('queue：扫描与接力顺序', () => {
