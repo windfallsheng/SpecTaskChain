@@ -29,7 +29,7 @@ const INTENTS: { intent: IntentId; triggers: string[]; patterns: RegExp[]; base:
     intent: 'new',
     base: 66,
     triggers: ['建个任务', '新建任务', '加个任务', '加任务', '创建任务', '新增任务', '添加任务', '来一个任务', '建个', '加个', '建一个', '加一个'],
-    patterns: [/(?:建|加|创建|新增|添加)(?:个|一个)?任务[:：]?(.*)/, /新建(.+)任务/],
+    patterns: [/(?:建|加|创建|新增|添加)(?:个|一个)?任务[:：]?(.*)/, /新建(.+)任务/, /(?:放到|放入|放|加入|入)([^\s，,。？?]{1,20})模块/],
   },
   {
     intent: 'run',
@@ -75,6 +75,10 @@ export function recognizeIntent(input: string): IntentResult {
         confidence = Math.max(confidence, def.base + Math.min(t.length, 10));
       }
     }
+    // 句式兼底（同域 patterns）：词典未命中时句法命中也能进候选（如「写登录接口，放认证模块」无「建」字也归 new）
+    for (const p of def.patterns) {
+      if (p.test(input)) confidence = Math.max(confidence, def.base + 4);
+    }
     if (confidence >= def.base && (!best || confidence > best.confidence)) {
       const params: IntentResult['params'] = {};
       const m = input.match(/(?:task|任务)[- _]?([a-zA-Z0-9_-]+)/i);
@@ -91,7 +95,8 @@ export function recognizeIntent(input: string): IntentResult {
         if (cm) params.taskName = cm[1];
       }
       if (!params.group) {
-        const mm = input.match(/(?:放到|放入|放|加入|入|建|到|进)([^\s，,。？?]{1,20})模块/);
+        // 量词「个/一个」不进捕获组：「建个认证模块」→ group=认证，不吞「个」
+        const mm = input.match(/(?:放到|放入|放|加入|入|建|到|进)(?:个|一个)?([^\s，,。？?]{1,20})模块/);
         if (mm) params.group = mm[1];
       }
       // reset 专属：目标（任务 ID / 模块 / 批次 / --all）+ --hard。

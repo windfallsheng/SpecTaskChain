@@ -29,8 +29,11 @@ export function askCommand(cfg: TaskQConfig, input: string): string {
       const goalMatch = input.match(/任务[:：]?\s*(.+)$/);
       let goal = goalMatch ? goalMatch[1].trim() : input;
       if (result.params.group) {
-        // 剥掉「放 X 模块」后缀，goal 只留任务本身
-        goal = goal.replace(new RegExp(`[,，]?\\s*放?${result.params.group}模块$`), '').trim();
+        // 先剥「建 X 模块」前缀再剥「放 X 模块」后缀，goal 只留任务本身；剥完为空用模块名兼底
+        // （顺序不能反：「建个认证模块」若先剥后缀会剩「建个」残渣）
+        goal = goal.replace(new RegExp(`^(?:建|加|创建|新增|添加)(?:个|一个)?${result.params.group}模块[:：，,]?\\s*`), '').trim();
+        goal = goal.replace(new RegExp(`[,，]?\\s*(?:放|放入)?${result.params.group}模块$`), '').trim();
+        if (!goal) goal = `${result.params.group}模块`;
       }
       return newCommand(cfg, {
         goal: goal.slice(0, 60),

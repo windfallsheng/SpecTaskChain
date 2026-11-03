@@ -161,6 +161,19 @@ describe('intent：口语入口', () => {
     expect(recognizeIntent('重新开始执行').intent).toBe('run');
     expect(recognizeIntent('重新建个任务：写文档').intent).toBe('new');
   });
+  it('「建个认证模块」→ new 且量词「个」不进 group（group=认证不吞「个」）', () => {
+    const r = recognizeIntent('建个认证模块');
+    expect(r.intent).toBe('new');
+    expect(r.params.group).toBe('认证');
+    const r2 = recognizeIntent('建一个数据模块，写清洗脚本');
+    expect(r2.intent).toBe('new');
+    expect(r2.params.group).toBe('数据');
+  });
+  it('「写登录接口，放认证模块」无「建」字也归 new（句式兼底）且 group=认证', () => {
+    const r = recognizeIntent('写登录接口，放认证模块');
+    expect(r.intent).toBe('new');
+    expect(r.params.group).toBe('认证');
+  });
 });
 
 describe('queue：扫描与接力顺序', () => {
