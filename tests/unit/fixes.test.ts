@@ -493,6 +493,10 @@ describe('0.2.5：定向执行 + 重跑复位 + SKILL 矩阵', () => {
     expect(sub).toContain('name: taskq-run');
     expect(sub).toContain('taskq run');
     expect(sub).toContain('--task <id>');
+    // 重跑分流：taskq-run 不只管接力，重新执行/从头再来有专属路径
+    expect(sub).toContain('重新执行/重跑某个任务或模块');
+    expect(sub).toContain('taskq reset --all --hard');
+    expect(sub).toContain('重跑三态');
     const main = readFileSync(join(base, 'taskq', 'SKILL.md'), 'utf-8');
     expect(main).toContain('/taskq-new /taskq-run /taskq-clarify /taskq-done');
     expect(main).toContain('taskq reset');
