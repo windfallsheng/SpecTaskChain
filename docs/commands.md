@@ -239,17 +239,21 @@ taskq report [--batch 批次] [--status 状态] [--type 类型] [--html]
 操作轨迹（队列写操作的时间线回放）：何时建了任务 / 领取 / 验收 / 复位，一条流水全记下。
 
 ```
-taskq history [--batch 批次] [--limit N]
+taskq history [--batch 批次] [--task ID] [--since 日期] [--limit N]
 ```
 
 | 参数 | 说明 |
 | :--- | :--- |
 | `--batch batch-001` | 只看某批次（默认全部批次；跨批次操作如 `reset --all` 不匹配任何批次） |
+| `--task ID` | 任务一生追踪：只看某任务的全部轨迹（「这任务怎么验收了两次」的最佳答法） |
+| `--since 今天\|昨天\|YYYY-MM-DD` | 时间窗（口语日期自动转 YYYY-MM-DD；UTC 日界含当天） |
 | `--limit N` | 显示最近 N 条（默认 30；`--limit 0` = 全量；超量时末尾提示总数） |
 
 只记写操作（new/run/execute/done/reset 五类自动留痕），只读命令（list/status/report）不记——流水不被刷屏淹没。数据落 `.taskchain/op-log.json`（JSONL 追加式，损坏行局部跳过）。
 
 与 report 分工：report 按任务聚合总账（这个任务的一生），history 按时间线回放流水（这个队列的一天）。
+
+口语直达（taskq ask）：「最近做了什么」→ 全批次流水；「XX 怎么了」→ 该任务的一生追踪；「昨天做了什么」→ 时间窗。AI 接力规则（taskq init 生成）已含开场播报约定：新会话先跑 `history --limit 5` 报「上次干到哪了」。
 
 ```
 📜 操作轨迹（全部批次，最近 5 条，倒序）

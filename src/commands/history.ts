@@ -12,11 +12,17 @@ const CMD_LABEL: Record<string, string> = {
   reset: '复位',
 };
 
-export function historyCommand(cfg: TaskQConfig, opts: { batch?: string; limit?: number } = {}): string {
-  const all = readOpLog(cfg, { batch: opts.batch });
+export function historyCommand(cfg: TaskQConfig, opts: { batch?: string; limit?: number; task?: string; since?: string } = {}): string {
+  const all = readOpLog(cfg, { batch: opts.batch, target: opts.task, since: opts.since });
   const entries = opts.limit ? all.slice(0, opts.limit) : all;
-  const scope = opts.batch ? `批次 ${opts.batch}` : '全部批次';
+  const sinceTag = opts.since ? `（${opts.since} 起）` : '';
+  const scope = opts.task
+    ? `任务 ${opts.task} 的一生${sinceTag}`
+    : opts.batch
+      ? `批次 ${opts.batch}${sinceTag}`
+      : `全部批次${sinceTag}`;
   if (!entries.length) {
+    if (opts.task) return `📜 操作轨迹（${scope}）\n\n没有「${opts.task}」的轨迹记录。用 taskq list 核对任务 ID。`;
     return `📜 操作轨迹（${scope}）\n\n还没有操作记录。跑一次 taskq new 建任务、taskq run 领取执行，轨迹就开始了。`;
   }
   const lines = entries.map((e) => {

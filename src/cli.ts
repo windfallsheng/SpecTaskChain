@@ -1,6 +1,7 @@
 // SpecTaskChain CLI：规格驱动的任务队列
 // Chain = 接力（relay），不是依赖（dependency）——队列是第一公民，无人值守接力完成
 import { resolveConfig, ensureStructure } from './core/config';
+import { parseDue } from './core/task-spec';
 import { readVersion } from './core/version';
 import { helpText, guideText, commandDetail } from './core/help';
 import { generateGuideHtml } from './core/guide';
@@ -171,10 +172,16 @@ function main(): void {
         output = reportCommand(cfg, { batch: flag('--batch'), status: flag('--status'), type: flag('--type'), html: hasFlag('--html') });
         break;
       case 'history': {
-        // 操作轨迹：时间线回放（默认最近 30 条；--limit 0 = 全量；--batch 过滤批次）
+        // 操作轨迹：时间线回放（默认最近 30 条；--limit 0 = 全量；--batch/--task/--since 三把过滤）
         const limitRaw = flag('--limit');
         const limit = limitRaw !== undefined && !isNaN(Number(limitRaw)) ? Number(limitRaw) : 30;
-        output = historyCommand(cfg, { batch: flag('--batch'), limit: limit || undefined });
+        const sinceRaw = flag('--since');
+        output = historyCommand(cfg, {
+          batch: flag('--batch'),
+          task: flag('--task'),
+          since: sinceRaw ? parseDue(sinceRaw) || sinceRaw : undefined, // 口语日期（今天/昨天/前天）→ YYYY-MM-DD
+          limit: limit || undefined,
+        });
         break;
       }
       case 'ask': {

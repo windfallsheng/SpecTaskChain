@@ -1,6 +1,6 @@
 // ask 意图识别：词典匹配为主（口语入口，零学习成本）
 // 宿主 AI 负责指代消解（「上面的内容」→ 文件路径），CLI 负责意图 + 参数提取 + 精确执行
-export type IntentId = 'new' | 'clarify' | 'run' | 'execute' | 'pipeline' | 'split' | 'init' | 'status' | 'report' | 'list' | 'done' | 'reset' | 'fix' | 'help';
+export type IntentId = 'new' | 'clarify' | 'run' | 'execute' | 'pipeline' | 'split' | 'init' | 'status' | 'report' | 'history' | 'list' | 'done' | 'reset' | 'fix' | 'help';
 
 export interface IntentResult {
   intent: IntentId;
@@ -69,6 +69,12 @@ const INTENTS: { intent: IntentId; triggers: string[]; patterns: RegExp[]; base:
     base: 62,
     triggers: ['出个报告', '生成报告', '执行报告', '队列报告', 'report'],
     patterns: [/出?个?(?:执行|队列)?报告/],
+  },
+  {
+    intent: 'history',
+    base: 62,
+    triggers: ['操作历史', '操作记录', '操作轨迹', '历史记录', '最近做了什么', '最近干了什么', '最近操作', 'history', '轨迹'],
+    patterns: [/(?:操作)?(?:历史|轨迹|记录)/, /最近(?:做了什么|干了什么|操作)/, /(?:怎么了|怎么回事)/, /(?:今天|昨天|前天)(?:.*)?(?:做了什么|干了什么)/],
   },
   {
     intent: 'list',
@@ -252,7 +258,7 @@ export function recognizeIntent(input: string): IntentResult {
     }
     if (confidence >= def.base && (!best || confidence > best.confidence)) {
       const params: IntentResult['params'] = {};
-      const m = input.match(/(?:task|任务)[- _]?([a-zA-Z0-9_-]+)/i);
+      const m = input.match(/(task-[a-zA-Z0-9_-]+|[a-zA-Z0-9_-]+)/i);
       if (m) params.taskId = m[1];
       const fm = input.match(/--file\s+(\S+)/);
       if (fm) params.file = fm[1];
@@ -319,6 +325,7 @@ export function recognizeIntent(input: string): IntentResult {
     case 'init': best.fullCommand = 'taskq init'; break;
     case 'status': best.fullCommand = 'taskq status'; break;
     case 'report': best.fullCommand = 'taskq report'; break;
+    case 'history': best.fullCommand = 'taskq history'; break;
     case 'list': best.fullCommand = 'taskq list'; break;
     case 'done':
       best.fullCommand = p.taskId ? `taskq done ${p.taskId}` : 'taskq done <task-id>';

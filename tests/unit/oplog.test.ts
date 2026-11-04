@@ -7,6 +7,7 @@ import { tmpdir } from 'os';
 import { appendOpLog, readOpLog } from '../../src/core/oplog';
 import { historyCommand } from '../../src/commands/history';
 import { newCommand } from '../../src/commands/new';
+import { askCommand } from '../../src/commands/ask';
 
 function fixture(): { cfg: { projectRoot: string; queueDir: string; metaDir: string } } {
   const root = mkdtempSync(join(tmpdir(), 'taskq-oplog-'));
@@ -53,6 +54,31 @@ describe('oplog 数据层', () => {
     expect(filtered[0].target).toBe('a');
   });
 
+  it('target 过滤：任务一生追踪', () => {
+    const { cfg } = fixture();
+    appendOpLog(cfg, { cmd: 'new', target: 'task-a', batch: 'batch-001' });
+    appendOpLog(cfg, { cmd: 'done', target: 'task-a', batch: 'batch-001' });
+    appendOpLog(cfg, { cmd: 'new', target: 'task-b', batch: 'batch-001' });
+    const traced = readOpLog(cfg, { target: 'task-a' });
+    expect(traced).toHaveLength(2);
+    expect(traced.every((e) => e.target === 'task-a')).toBe(true);
+  });
+
+  it('since 过滤：时间窗（UTC 日界，含当天）', () => {
+    const { cfg } = fixture();
+    appendOpLog(cfg, { cmd: 'new', target: 'old' });
+    // 手写两条不同日期的记录验证边界
+    const logPath = `${cfg.metaDir}/op-log.json`;
+    const today = new Date().toISOString().slice(0, 10);
+    writeFileSync(logPath, [
+      JSON.stringify({ ts: '2020-01-01T00:00:00.000Z', cmd: 'new', target: 'old' }),
+      JSON.stringify({ ts: `${today}T00:00:00.000Z`, cmd: 'new', target: 'today' }),
+    ].join('\n') + '\n', 'utf-8');
+    const win = readOpLog(cfg, { since: today });
+    expect(win).toHaveLength(1);
+    expect(win[0].target).toBe('today');
+  });
+
   it('损坏行跳过不炸全账', () => {
     const { cfg } = fixture();
     writeFileSync(join(cfg.metaDir, 'op-log.json'), '{"ts":"broken json\n{"ts":"2026-01-01T00:00:00.000Z","cmd":"new","target":"ok"}\n', 'utf-8');
@@ -87,6 +113,49 @@ describe('historyCommand 渲染', () => {
     for (let i = 0; i < 3; i++) appendOpLog(cfg, { cmd: 'new', target: `t${i}` });
     const out = historyCommand(cfg, { limit: 2 });
     expect(out).toContain('共 3 条');
+  });
+
+  it('--task 渲染：任务一生 + 无轨迹提示', () => {
+    const { cfg } = fixture();
+    appendOpLog(cfg, { cmd: 'new', target: 'task-a', batch: 'batch-001' });
+    const out = historyCommand(cfg, { task: 'task-a' });
+    expect(out).toContain('任务 task-a 的一生');
+    const miss = historyCommand(cfg, { task: 'ghost' });
+    expect(miss).toContain('没有「ghost」的轨迹记录');
+  });
+
+  it('--since 渲染：时间窗标签', () => {
+    const { cfg } = fixture();
+    appendOpLog(cfg, { cmd: 'new', target: 'task-a' });
+    const out = historyCommand(cfg, { since: '2026-11-01' });
+    expect(out).toContain('（2026-11-01 起）');
+  });
+});
+
+describe('ask 口语接入集成', () => {
+  it('ask「最近做了什么」→ 全批次流水', () => {
+    const { cfg } = fixture();
+    appendOpLog(cfg, { cmd: 'new', target: 'task-a', batch: 'batch-001', note: '写文档' });
+    const r = askCommand(cfg, '最近做了什么');
+    expect(r.output).toContain('操作轨迹');
+    expect(r.output).toContain('新建');
+  });
+
+  it('ask「task-a 怎么了」→ 任务一生追踪（不混入他任务）', () => {
+    const { cfg } = fixture();
+    appendOpLog(cfg, { cmd: 'new', target: 'task-a', batch: 'batch-001' });
+    appendOpLog(cfg, { cmd: 'new', target: 'task-b', batch: 'batch-001' });
+    const r = askCommand(cfg, 'task-a 怎么了');
+    expect(r.output).toContain('任务 task-a 的一生');
+    expect(r.output).not.toContain('task-b');
+  });
+
+  it('ask「昨天做了什么」→ 时间窗流水', () => {
+    const { cfg } = fixture();
+    appendOpLog(cfg, { cmd: 'new', target: 'task-a', batch: 'batch-001' });
+    const r = askCommand(cfg, '昨天做了什么');
+    expect(r.output).toContain('操作轨迹');
+    expect(r.output).toContain('起');
   });
 });
 

@@ -21,8 +21,8 @@ export function appendOpLog(cfg: TaskQConfig, entry: Omit<OpLogEntry, 'ts'>): vo
   appendFileSync(logPath, line + '\n', 'utf-8');
 }
 
-/** 读轨迹：全量 → batch 过滤 → 时间倒序 → limit 截断；文件缺失 / 损坏行容错 */
-export function readOpLog(cfg: TaskQConfig, opts: { batch?: string; limit?: number } = {}): OpLogEntry[] {
+/** 读轨迹：全量 → batch / target / since 过滤 → 时间倒序 → limit 截断；文件缺失 / 损坏行容错 */
+export function readOpLog(cfg: TaskQConfig, opts: { batch?: string; limit?: number; target?: string; since?: string } = {}): OpLogEntry[] {
   const logPath = join(cfg.metaDir, 'op-log.json');
   if (!existsSync(logPath)) return [];
   const out: OpLogEntry[] = [];
@@ -37,7 +37,9 @@ export function readOpLog(cfg: TaskQConfig, opts: { batch?: string; limit?: numb
   } catch {
     return [];
   }
-  const filtered = opts.batch ? out.filter((e) => e.batch === opts.batch) : out;
+  let filtered = opts.batch ? out.filter((e) => e.batch === opts.batch) : out;
+  if (opts.target) filtered = filtered.filter((e) => e.target === opts.target); // 任务一生追踪：只看某任务的全部轨迹
+  if (opts.since) filtered = filtered.filter((e) => e.ts.slice(0, 10) >= opts.since!); // 时间窗（UTC 日界，含当天）
   filtered.reverse(); // 时间线倒序：最新在上
   return opts.limit ? filtered.slice(0, opts.limit) : filtered;
 }

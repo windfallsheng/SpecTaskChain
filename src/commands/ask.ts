@@ -10,6 +10,8 @@ import { relayNext, batchRelay, renderBatchResult } from '../core/runner';
 import { renderRunResult } from './run';
 import { statusCommand } from './status';
 import { reportCommand } from './report';
+import { historyCommand } from './history';
+import { parseDue } from '../core/task-spec';
 import { listCommand } from './list';
 import { initCommand } from './init';
 import { newCommand } from './new';
@@ -87,6 +89,16 @@ export function askCommand(cfg: TaskQConfig, input: string): AskResult {
       if (settled.blocked) return { output: settled.blocked, exitCode: 0 };
       return { output: reportCommand(cfg, { batch: settled.id }), exitCode: 0 };
     }
+    case 'history': {
+      // 显式批次词才过滤（无批次词 = 全部批次的全局流水）；「XX 怎么了」→ --task 一生追踪；「今天/昨天」→ --since 时间窗
+      const settled = result.params.batchRef ? settleBatch(cfg, result.params.batchRef) : { id: undefined };
+      if (settled.blocked) return { output: settled.blocked, exitCode: 0 };
+      const probe = input.replace(/^.*?[：:]\s*/, ''); // 剥「看下历史：」前缀
+      const askTrace = /(?:怎么|怎么回事|的历史|的轨迹|几次|轨迹)/.test(probe); // 「XX 怎么了」语义
+      const tid = result.params.taskId || (askTrace ? (probe.match(/[a-zA-Z][a-zA-Z0-9_-]{3,}/) || [])[1] : undefined);
+      const sinceHit = probe.match(/(?:今天|昨天|前天|明天|后天|\d{4}-\d{2}-\d{2})/);
+      return { output: historyCommand(cfg, { batch: settled.id, task: askTrace ? tid : undefined, since: sinceHit ? parseDue(sinceHit[0]) || sinceHit[0] : undefined }), exitCode: 0 };
+    }
     case 'list': {
       const settled = settleBatch(cfg, result.params.batchRef);
       if (settled.blocked) return { output: settled.blocked, exitCode: 0 };
@@ -127,7 +139,7 @@ export function askCommand(cfg: TaskQConfig, input: string): AskResult {
       return { output: resetCommand(cfg, target, { hard: result.params.hard }), exitCode: 0 };
     }
     default:
-      return { output: `意图未识别：「${input}」\n\n可用命令：\n  taskq init / new / split / pipeline / clarify / run / execute / reset / done / list / status / report / ask\n或直接说：\n  「建个任务：写三篇迁移文档」\n  「拆分任务：写三篇 迁移文档」\n  「澄清上面的内容」\n  「跑队列」「批量执行」「跑流水线」「重跑 34-cshidaima」「从头再来」「看下进度」「出个报告」`, exitCode: 0 };
+      return { output: `意图未识别：「${input}」\n\n可用命令：\n  taskq init / new / split / pipeline / clarify / run / execute / reset / done / list / status / report / history / ask\n或直接说：\n  「建个任务：写三篇迁移文档」\n  「拆分任务：写三篇 迁移文档」\n  「澄清上面的内容」\n  「跑队列」「批量执行」「跑流水线」「重跑 34-cshidaima」「从头再来」「看下进度」「出个报告」「看下历史」「最近做了什么」「XX 怎么了」`, exitCode: 0 };
   }
 }
 

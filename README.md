@@ -60,7 +60,7 @@ taskq ask "看下进度"                                 # 口语入口（识别
 | `taskq list [--batch 批次] [--status 状态] [--type 类型]` | 队列清单（按批次分组，三扇窗筛选） |
 | `taskq status [--panel] [--batch 批次\|all]` | 队列总览（--panel 生成 HTML 可视化面板） |
 | `taskq report [--batch 批次] [--status 状态] [--type 类型]` | 队列报告（执行留痕，有账可查） |
-| `taskq history [--batch 批次] [--limit N]` | 操作轨迹（时间线回放：新建/领取/验收/复位流水，有账可查） |
+| `taskq history [--batch 批次] [--task ID] [--since 今天\|昨天\|YYYY-MM-DD] [--limit N]` | 操作轨迹（时间线流水 / 任务一生追踪 / 时间窗；ask「最近做了什么」「XX 怎么了」口语直达） |
 | `taskq ask "自然语言"` | 口语入口（建任务/拆分/流水线/批量执行/澄清/跑队列/重跑/看进度/报告 + 复合意图编排：「澄清并执行」不再丢段） |
 
 完整参数与行为见 [docs/commands.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/commands.md)。
