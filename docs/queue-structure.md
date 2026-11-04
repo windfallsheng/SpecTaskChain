@@ -67,6 +67,7 @@ tags:                      # 标签（自由关键词，跨批次按主题筛）
 estimate: 8                # 预估工时（小时）
 role: security-reviewer    # 执行角色（type 管形态，role 管专业；见「执行角色」章）
 reports: false             # 报告开关（任务级）：false = 本任务退出澄清/完成评估报告（缺省参与）
+overwrite: false           # 覆盖开关（任务级）：false = 澄清处方（taskq fix）只提示不写回本文件（缺省允许覆盖，覆盖前原文件归档到任务目录 sources/）
 goal: ...
 output: ...
 acceptance: ...
@@ -96,12 +97,14 @@ batch-size: 3        # 每批领取任务数（一次 execute 领几个）
 max-attempts: 3      # 任务失败重试上限（验收不通过累计达上限即 failed）
 skip-draft: false    # 是否跳过 draft 拦停（true = 未澄清也照跑）
 reports: true        # 是否生成评估报告（澄清 CLARIFY_REPORT + 完成 DONE_REPORT；false = 本批次整体关闭）
+overwrite: true      # 澄清处方（taskq fix）是否覆盖写回任务 SPEC.md（false = 本批次任务默认只提示不落盘）
 ```
 
 - **落盘位置**：`config/BATCH.yaml`（批次内 config/ 目录，与用户任务/模块内容分开；未来扩展别的配置文件都往这里放）。旧版本（≤0.2.23）在批次根目录的 `BATCH.yaml` 读侧兼容，`taskq new`/`init` 时自动迁移到 config/（内容原样搬入，校验一致后移除旧文件）。
 - **自动生成**：建批次（`taskq new` 首个批次 / `init`）自动落盘，注释详尽；已存在绝不覆盖（用户手改是最高优先级资产）。
 - **优先级链（每项独立生效）**：CLI 临时指令 > 批次配置 > 系统默认——`taskq execute --batch-size 2` 只当次生效不写回；`taskq ask "一次领 5 个"` 同理。
 - **报告开关四级链**：`reports` 项多一层任务级覆盖——CLI 临时（`--no-report` 关闭一次 / `--report` 强制出一次）> 任务级（SPEC.md `reports: false` 任务自己退出报告）> 批次级（本文件 `reports: false` 批次整体关闭）> 系统默认（true 会生成）。
+- **覆盖开关四级链**：`overwrite` 项多一层任务级覆盖——CLI 临时（`taskq fix --no-overwrite` 当次只提示不写回 / `--overwrite` 强制覆盖一次）> 任务级（SPEC.md `overwrite: false` 该任务处方只提示不落盘）> 批次级（本文件 `overwrite: false` 批次任务默认不覆盖）> 系统默认（true 覆盖）。按任务所属批次逐一判定，全队修各任务各自批次互不牵连；覆盖前原文件归档到任务目录 `sources/SPEC.md`（用户原来的写法随时可找回）。
 - **三级兜底**：文件缺失 → 全默认；内容损坏 → 备份 BATCH.yaml.bak + 告警 + 全默认；单字段异常（负数/非数/类型错）→ 只回落该字段，其余照常生效。
 - **升级维护**：只加键不改语义；旧文件缺新键自动取系统默认，未知键忽略，双向向前兼容，无需迁移脚本。
 

@@ -1,11 +1,11 @@
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { describe, it, expect } from 'vitest';
 import { buildSpec, readSpec } from '../../src/core/task-spec';
 import { resolveTaskType } from '../../src/core/task-type';
 import { scanQueue } from '../../src/core/queue';
-import { inferOutputPath, computeFixes, applyFix } from '../../src/core/fixer';
+import { inferOutputPath, computeFixes, applyFix, resolveFixSwitch } from '../../src/core/fixer';
 import { fixCommand } from '../../src/commands/fix';
 
 const cfg = (root: string) => ({ projectRoot: root, queueDir: join(root, 'queue'), metaDir: join(root, 'queue', '.taskchain') });
@@ -70,7 +70,7 @@ draft: true
 这一行一个字都不能动。
 `;
 
-describe('applyFix 行级编辑：落盘 / 备份 / 幂等 / 正文不动', () => {
+describe('applyFix 行级编辑：落盘 / sources 归档 / 幂等 / 正文不动', () => {
   const setup = () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-fixer-'));
     const dir = join(root, 'queue', 'batch-001', '01-migrate-guide');
@@ -94,18 +94,21 @@ describe('applyFix 行级编辑：落盘 / 备份 / 幂等 / 正文不动', () =
     // 正文一字不碰
     expect(after).toContain('# 正文');
     expect(after).toContain('这一行一个字都不能动。');
-    // 备份 = 原文
-    expect(readFileSync(`${specPath}.bak`, 'utf-8')).toBe(DRAFT_SPEC);
+    // 归档 = 原文（任务目录 sources/SPEC.md，不是同目录 .bak）
+    expect(readFileSync(join(dir, 'sources', 'SPEC.md'), 'utf-8')).toBe(DRAFT_SPEC);
+    expect(existsSync(`${specPath}.bak`)).toBe(false);
   });
 
-  it('幂等：修复后再跑 → 无新改动、文件不变', () => {
+  it('幂等：修复后再跑 → 无新改动、文件不变、sources 归档不刷新', () => {
     const { root, dir, specPath } = setup();
     const meta = join(root, 'queue', '.taskchain');
     applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc')));
     const once = readFileSync(specPath, 'utf-8');
+    const archiveOnce = readFileSync(join(dir, 'sources', 'SPEC.md'), 'utf-8');
     const again = applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc')));
     expect(again).toEqual([]);
     expect(readFileSync(specPath, 'utf-8')).toBe(once);
+    expect(readFileSync(join(dir, 'sources', 'SPEC.md'), 'utf-8')).toBe(archiveOnce); // 无改动不刷新归档
   });
 
   it('acceptance 已有评审内容 → 骨架不重复写、原文保留', () => {
@@ -134,7 +137,7 @@ draft: true
     expect(after).toContain('正文。');
   });
 
-  it('形状异常（无 frontmatter）→ 不碰文件', () => {
+  it('形状异常（无 frontmatter）→ 不碰文件、不产生 sources 归档', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-fixer-'));
     const dir = join(root, 'queue', 'batch-001', '01-weird');
     mkdirSync(dir, { recursive: true });
@@ -146,6 +149,7 @@ draft: true
     const items = spec ? computeFixes(spec, resolveTaskType(meta, 'doc')) : [];
     expect(applyFix(specPath, items)).toEqual([]);
     expect(readFileSync(specPath, 'utf-8')).toBe(text);
+    expect(existsSync(join(dir, 'sources'))).toBe(false); // 无改动不产生归档目录
   });
 });
 
@@ -197,6 +201,118 @@ describe('fixCommand 命令路径：非交互提示 / 预览 / 授权 / 定向',
   it('--task 定向不存在 → 报错提示', () => {
     const { c } = setupTask();
     expect(fixCommand(c, { taskId: '99-ghost' })).toContain('❌ 未找到任务');
+  });
+});
+
+// ============================================================
+// 覆盖开关四级链：CLI 临时 > 任务级 > 批次级 > 系统默认
+// ============================================================
+
+describe('resolveFixSwitch：纯函数四级链', () => {
+  it('无 CLI 无配置 → 系统默认覆盖', () => {
+    expect(resolveFixSwitch({}, {})).toEqual({ enabled: true, reason: '' });
+  });
+
+  it('批次配置 overwrite: false → 关闭（原因指路）', () => {
+    const r = resolveFixSwitch({ overwrite: false }, {});
+    expect(r.enabled).toBe(false);
+    expect(r.reason).toContain('config/BATCH.yaml');
+    expect(r.reason).toContain('--overwrite');
+  });
+
+  it('CLI --no-overwrite 临时关闭（优先级高于批次）', () => {
+    const r = resolveFixSwitch({ overwrite: true }, { noOverwrite: true });
+    expect(r.enabled).toBe(false);
+    expect(r.reason).toContain('--no-overwrite');
+  });
+
+  it('CLI --overwrite 强制覆盖（压过批次关闭）', () => {
+    expect(resolveFixSwitch({ overwrite: false }, { forceOverwrite: true })).toEqual({ enabled: true, reason: '' });
+  });
+});
+
+describe('fixCommand 覆盖开关：批次级 / CLI 临时 / 任务级', () => {
+  const setupTask = () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-fixow-'));
+    const dir = join(root, 'queue', 'batch-001', '01-migrate-guide');
+    mkdirSync(dir, { recursive: true });
+    const specPath = join(dir, 'SPEC.md');
+    writeFileSync(specPath, DRAFT_SPEC, 'utf-8');
+    return { root, dir, specPath, c: cfg(root) };
+  };
+
+  it('批次配置 overwrite: false → --yes 也不落盘，提示原因', () => {
+    const { root, specPath, c } = setupTask();
+    mkdirSync(join(root, 'queue', 'batch-001', 'config'), { recursive: true });
+    writeFileSync(join(root, 'queue', 'batch-001', 'config', 'BATCH.yaml'), 'overwrite: false\n', 'utf-8');
+    const out = fixCommand(c, { yes: true });
+    expect(out).toContain('处方未应用');
+    expect(out).toContain('overwrite: false');
+    expect(readFileSync(specPath, 'utf-8')).toBe(DRAFT_SPEC); // 文件一字不动
+  });
+
+  it('CLI --no-overwrite 当次关闭（覆盖默认）', () => {
+    const { specPath, c } = setupTask();
+    const out = fixCommand(c, { yes: true, noOverwrite: true });
+    expect(out).toContain('处方未应用');
+    expect(out).toContain('--no-overwrite');
+    expect(readFileSync(specPath, 'utf-8')).toBe(DRAFT_SPEC);
+  });
+
+  it('CLI --overwrite 强制覆盖（压过批次关闭）', () => {
+    const { root, specPath, c } = setupTask();
+    mkdirSync(join(root, 'queue', 'batch-001', 'config'), { recursive: true });
+    writeFileSync(join(root, 'queue', 'batch-001', 'config', 'BATCH.yaml'), 'overwrite: false\n', 'utf-8');
+    const out = fixCommand(c, { yes: true, forceOverwrite: true });
+    expect(out).toContain('✅ 已修复 4 处');
+    expect(readFileSync(specPath, 'utf-8')).toContain('output: docs/migrate-guide.md');
+  });
+
+  it('任务级 SPEC.md overwrite: false → 处方跳过不落盘（--yes 也拦）', () => {
+    const { dir, c } = setupTask();
+    writeFileSync(join(dir, 'SPEC.md'), `---\ntype: doc\noverwrite: false\ngoal: 写迁移手册\noutput:\nacceptance:\n  artifacts: []\n  checks: []\n  review: ''\ndraft: true\n---\n正文。\n`, 'utf-8');
+    const out = fixCommand(c, { yes: true });
+    expect(out).toContain('overwrite: false');
+    expect(readFileSync(join(dir, 'SPEC.md'), 'utf-8')).not.toContain('docs/migrate-guide.md'); // 未被覆盖
+  });
+
+  it('默认（无配置）：--yes 覆盖落盘 + sources/ 归档原文件', () => {
+    const { dir, specPath, c } = setupTask();
+    const out = fixCommand(c, { yes: true });
+    expect(out).toContain('✅ 已修复 4 处');
+    expect(readFileSync(join(dir, 'sources', 'SPEC.md'), 'utf-8')).toBe(DRAFT_SPEC);
+    expect(readFileSync(specPath, 'utf-8')).not.toBe(DRAFT_SPEC);
+  });
+
+  it('定向修单任务：用任务所属批次配置（不被其它批次配置牵连）', () => {
+    const { root, specPath, c } = setupTask();
+    // batch-002 关闭：定向修 batch-002 的任务应被拦
+    const d2 = join(root, 'queue', 'batch-002', '02-guide');
+    mkdirSync(d2, { recursive: true });
+    writeFileSync(join(d2, 'SPEC.md'), DRAFT_SPEC, 'utf-8');
+    mkdirSync(join(root, 'queue', 'batch-002', 'config'), { recursive: true });
+    writeFileSync(join(root, 'queue', 'batch-002', 'config', 'BATCH.yaml'), 'overwrite: false\n', 'utf-8');
+    const out2 = fixCommand(c, { yes: true, taskId: '02-guide' });
+    expect(out2).toContain('处方未应用');
+    expect(readFileSync(join(d2, 'SPEC.md'), 'utf-8')).toBe(DRAFT_SPEC); // 未被覆盖
+    // batch-001 默认开：定向修 batch-001 的任务照常覆盖
+    const out1 = fixCommand(c, { yes: true, taskId: '01-migrate-guide' });
+    expect(out1).toContain('✅ 已修复 4 处');
+    expect(readFileSync(specPath, 'utf-8')).toContain('output: docs/migrate-guide.md');
+  });
+
+  it('全队修混合批次：各任务按各自批次判定（开的修、关的拦）', () => {
+    const { root, specPath, c } = setupTask();
+    const d2 = join(root, 'queue', 'batch-002', '02-guide');
+    mkdirSync(d2, { recursive: true });
+    writeFileSync(join(d2, 'SPEC.md'), DRAFT_SPEC, 'utf-8');
+    mkdirSync(join(root, 'queue', 'batch-002', 'config'), { recursive: true });
+    writeFileSync(join(root, 'queue', 'batch-002', 'config', 'BATCH.yaml'), 'overwrite: false\n', 'utf-8');
+    const out = fixCommand(c, { yes: true });
+    expect(out).toContain('✅ 已修复 4 处');
+    expect(out).toContain('02-guide'); // 被拦任务点名
+    expect(readFileSync(specPath, 'utf-8')).toContain('output: docs/migrate-guide.md');
+    expect(readFileSync(join(d2, 'SPEC.md'), 'utf-8')).toBe(DRAFT_SPEC); // 未被覆盖
   });
 });
 

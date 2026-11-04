@@ -30,6 +30,7 @@ export interface TaskSpec {
   estimate?: number;      // 预估工时（小时；report/status 汇总）
   role?: string;           // 执行角色（内置或 .taskchain/ROLES/{role}.md；type 管形态，role 管专业）
   reports?: boolean;       // 是否参与评估报告（false = 本任务退出澄清/完成评估报告；缺省参与）
+  overwrite?: boolean;     // 是否允许澄清处方（taskq fix）覆盖写回本 SPEC.md（false = 只提示不落盘；缺省允许，覆盖前原文件归档到 sources/）
   body: string;           // 正文全文（自由表达，执行时全文注入）
 }
 
@@ -201,6 +202,8 @@ export function buildSpec(id: string, dir: string, data: Record<string, any>, bo
     role: data.role ? String(data.role) : undefined,
     // 只有显式 false 才退出报告；缺省/true 都=参与（undefined 不写回，保持 SPEC.md 干净）
     reports: data.reports === false || data.reports === 'false' ? false : undefined,
+    // 只有显式 false 才拒绝覆盖；缺省/true 都=允许（undefined 不写回）
+    overwrite: data.overwrite === false || data.overwrite === 'false' ? false : undefined,
     body,
   };
 }
@@ -236,7 +239,7 @@ function foldScalar(s: string): string {
 /** 生成 SPEC.md 文件内容（frontmatter + 正文） */
 export function renderSpec(spec: {
   type?: string; goal: string; output: string; acceptance: AcceptanceSpec; dependsOn?: string[]; draft?: boolean; body?: string; name?: string;
-  createdAt?: string; priority?: string; tags?: string[]; estimate?: number; role?: string; reports?: boolean;
+  createdAt?: string; priority?: string; tags?: string[]; estimate?: number; role?: string; reports?: boolean; overwrite?: boolean;
 }): string {
   const lines: string[] = ['---'];
   lines.push(`type: ${spec.type || 'general'}`);
@@ -252,6 +255,7 @@ export function renderSpec(spec: {
   if (spec.estimate !== undefined) lines.push(`estimate: ${spec.estimate}`);
   if (spec.role) lines.push(`role: ${spec.role}`);
   if (spec.reports === false) lines.push('reports: false');
+  if (spec.overwrite === false) lines.push('overwrite: false');
   if (spec.dependsOn && spec.dependsOn.length) {
     lines.push('depends-on:');
     spec.dependsOn.forEach((d) => lines.push(`  - ${d}`));

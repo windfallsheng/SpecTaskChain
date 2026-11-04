@@ -81,7 +81,7 @@ function main(): void {
         break;
       case 'fix':
         // 体检处方的执行者：A 档机械修（output/acceptance 骨架/role/摘 draft）；TTY 下逐项确认，非 TTY 只提示（--yes 授权应用）
-        output = fixCommand(cfg, { taskId: flag('--task'), dryRun: hasFlag('--dry-run'), yes: hasFlag('--yes') });
+        output = fixCommand(cfg, { taskId: flag('--task'), dryRun: hasFlag('--dry-run'), yes: hasFlag('--yes'), noOverwrite: hasFlag('--no-overwrite'), forceOverwrite: hasFlag('--overwrite') });
         break;
       case 'run': {
         // 退出码协议：0 队列清空 / 10 接力（宿主 AI 执行）/ 12 拦截（draft/模块缺共享 spec/doing 进行中/failed 需人工介入）——直接传播给宿主

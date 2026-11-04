@@ -95,17 +95,21 @@ taskq clarify [--task 任务ID] [--file SPEC路径] [--chain] [--html] [--no-rep
 体检处方的执行者——只修 A 档机械项（改完必对），语义题一律不碰。
 
 ```
-taskq fix [--task 任务ID] [--yes] [--dry-run]
+taskq fix [--task 任务ID] [--yes] [--dry-run] [--no-overwrite] [--overwrite]
 ```
 
 | 参数 | 说明 |
 | :--- | :--- |
 | （无参数） | 全队体检后展示处方清单：TTY 下逐项确认 [y/N]（回车跳过）；非 TTY 只提示不等待 |
-| `--task <id>` | 只修单任务 |
+| `--task <id>` | 只修单任务（覆盖开关按该任务所属批次的配置判定） |
 | `--yes` | 静默应用全部处方（非交互模式/宿主 AI 的授权开关） |
 | `--dry-run` | 只预览处方不落盘（改什么字段、改成什么值） |
+| `--no-overwrite` | 覆盖开关（临时）：本次只提示处方不覆盖写回 |
+| `--overwrite` | 覆盖开关（临时）：强制覆盖写回（压过批次配置 `overwrite: false`） |
 
-四条底线：只动 frontmatter 已知字段 / 正文一字不碰 / 改前备份 SPEC.md.bak / 幂等（已满足不重复改）。
+覆盖开关四级链：CLI 临时（`--no-overwrite`/`--overwrite`）> 任务级（SPEC.md `overwrite: false`）> 批次级（config/BATCH.yaml `overwrite`，按任务所属批次判定）> 系统默认（覆盖）。
+
+四条底线：只动 frontmatter 已知字段 / 正文一字不碰 / 改前归档原文件到任务目录 `sources/SPEC.md` / 幂等（已满足不重复改）。
 
 ## taskq run
 

@@ -1,6 +1,6 @@
 // 批次配置（BATCH.yaml）：每个批次自己的「脾气」——接力执行姿势的默认值
 // 三级优先级链（每个配置项独立生效）：CLI 临时指令 > 批次配置 > 系统默认
-// 例外：reports 项多一层任务级覆盖（SPEC.md 的 reports: false 任务自己退出报告），四层 = CLI 临时 > 任务级 > 批次级 > 系统默认
+// 例外：reports/overwrite 两项多一层任务级覆盖（SPEC.md 的 reports: false / overwrite: false 任务自己声明），四层 = CLI 临时 > 任务级 > 批次级 > 系统默认
 // 兜底原则：文件缺失 / 内容损坏 / 字段异常，逐项回落系统默认，绝不炸队列
 // 落盘位置：批次目录/config/BATCH.yaml（配置归 config/ 目录，与用户任务/模块内容分开；未来扩展别的配置都往这里放）
 // 兼容：≤0.2.23 的旧落盘地（批次目录根 BATCH.yaml）读侧兜底；ensureBatchConfig 时自动迁移到 config/（内容复制校验一致后移除旧文件）
@@ -14,6 +14,7 @@ export interface BatchConfig {
   'max-attempts': number;  // 任务失败重试上限（验收不通过累计达上限即标记 failed 停止接力）
   'skip-draft': boolean;   // 是否跳过 draft 拦停（true = 规格未澄清也照跑）
   reports: boolean;        // 是否生成评估报告（澄清 CLARIFY_REPORT + 完成 DONE_REPORT；任务级退出用 SPEC.md reports: false）
+  overwrite: boolean;      // 澄清处方（taskq fix）是否覆盖写回用户原来的 SPEC.md（覆盖前原文件归档到任务目录 sources/；任务级拒绝用 SPEC.md overwrite: false）
 }
 
 /**
@@ -25,6 +26,7 @@ export const SYSTEM_BATCH_DEFAULTS: BatchConfig = {
   'max-attempts': 3,
   'skip-draft': false,
   reports: true,
+  overwrite: true,
 };
 
 /**
@@ -76,6 +78,7 @@ export function parseBatchConfig(text: string): BatchConfig {
     'max-attempts': safePositive(raw['max-attempts'], SYSTEM_BATCH_DEFAULTS['max-attempts']),
     'skip-draft': safeBool(raw['skip-draft'], SYSTEM_BATCH_DEFAULTS['skip-draft']),
     reports: safeBool(raw['reports'], SYSTEM_BATCH_DEFAULTS['reports']),
+    overwrite: safeBool(raw['overwrite'], SYSTEM_BATCH_DEFAULTS['overwrite']),
   };
 }
 
@@ -135,7 +138,7 @@ export function renderBatchConfig(overrides: Partial<BatchConfig> = {}): string 
   const lines = [
     '# BATCH.yaml —— 本批次队列的「脾气」：接力执行的默认姿势',
     '# 优先级链（每项独立生效）：CLI 临时指令 > 本文件 > 系统默认',
-    '# 系统默认：batch-size=3，max-attempts=3，skip-draft=false，reports=true',
+    '# 系统默认：batch-size=3，max-attempts=3，skip-draft=false，reports=true，overwrite=true',
     '#',
     '# 升级维护：version 记录 schema 版本；升级只加键不改语义，本文件缺失的键自动取系统默认，',
     '# 无需迁移脚本——想用新默认值直接删掉对应行即可。',
@@ -160,6 +163,12 @@ export function renderBatchConfig(overrides: Partial<BatchConfig> = {}): string 
     '# true = 默认生成；false = 本批次整体关闭。个别任务退出报告（探索性任务不想进报告），在任务 SPEC.md 写 reports: false。',
     '# 临时覆盖（仅当次生效）：taskq clarify --no-report 关闭一次 或  taskq execute --report 强制出一次',
     `reports: ${c['reports']}`,
+    '#',
+    '# 澄清处方（taskq fix）是否覆盖写回用户原来的 SPEC.md：',
+    '# true = 默认覆盖，覆盖前把原文件归档到任务目录 sources/SPEC.md（可随时找回）；false = 只提示处方不落盘。',
+    '# 个别任务拒绝覆盖（手工写的规格不想被 AI 改），在任务 SPEC.md 写 overwrite: false。',
+    '# 临时覆盖（仅当次生效）：taskq fix --no-overwrite 不覆盖一次 或  taskq fix --overwrite 强制覆盖一次',
+    `overwrite: ${c['overwrite']}`,
     '',
   ];
   return lines.join('\n');
