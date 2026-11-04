@@ -22,9 +22,9 @@ export function hasNonAscii(s: string): boolean {
   return /[^\x00-\x7F]/.test(s);
 }
 
-/** 目录名剥仪式前缀得语义 slug：'01-task-xiewendang' → 'xiewendang'；老目录 '01-xiewendang' 同样兼容（序号 + task- 前缀一并剥） */
+/** 目录名剥仪式前缀得语义 slug：'task-01-xiewendang' → 'xiewendang'；老目录 '01-task-xiewendang'/'01-xiewendang' 同样兼容（序号与 task- 前缀一并剥） */
 export function slugFromDir(id: string): string {
-  return id.replace(/^\d+-(task-)?/, '');
+  return id.replace(/^(task-)?\d+-(task-)?/, '');
 }
 
 /**

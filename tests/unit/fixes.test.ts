@@ -129,21 +129,21 @@ describe('state.json：原子写 + 损坏备份', () => {
 describe('taskq new：任务 ID 碰撞拒绝覆盖', () => {
   it('同 slug 再建 → 编号递增不覆盖（ID 碰撞保护）', () => {
     const cfg = makeCfg();
-    const dir = makeTask(cfg, '01-task-01');
+    const dir = makeTask(cfg, 'task-01-xiewendang');
     writeFileSync(join(dir, 'SPEC.md'), '原文件内容', 'utf-8');
-    const out = newCommand(cfg, { name: 'task-01', goal: '新任务', draft: true });
-    // 编号取最大+1：新任务是 02-task-01，原 01-task-01 不被覆盖
-    expect(out).toContain('02-task-01');
+    const out = newCommand(cfg, { name: 'xiewendang', goal: '新任务', draft: true });
+    // 编号取最大+1：新任务是 task-02-xiewendang，原 task-01-xiewendang 不被覆盖
+    expect(out).toContain('task-02-xiewendang');
     expect(readFileSync(join(dir, 'SPEC.md'), 'utf-8')).toBe('原文件内容');
-    expect(readFileSync(join(cfg.queueDir, 'batch-001', '02-task-01', 'SPEC.md'), 'utf-8')).toContain('新任务');
+    expect(readFileSync(join(cfg.queueDir, 'batch-001', 'task-02-xiewendang', 'SPEC.md'), 'utf-8')).toContain('新任务');
   });
 
   it('序号取最大值 +1，删除中间任务不撞号覆盖', () => {
     const cfg = makeCfg();
-    mkdirSync(join(cfg.queueDir, 'tasks', '03-task-03'), { recursive: true });
+    mkdirSync(join(cfg.queueDir, 'tasks', '03-task-03'), { recursive: true }); // 老格式目录同样占号（兼容提取）
     const out = newCommand(cfg, { goal: '新任务', draft: true });
-    expect(out).toContain('04-');
-    expect(out).not.toContain('01-');
+    expect(out).toContain('task-04-');
+    expect(out).not.toContain('task-01-');
   });
 });
 

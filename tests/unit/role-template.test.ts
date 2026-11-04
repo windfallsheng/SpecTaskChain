@@ -246,7 +246,7 @@ describe('规格模板（覆盖链）', () => {
     const cfg = makeCfg();
     const out = newCommand(cfg, { goal: '写一份周报', type: 'doc', draft: true });
     expect(out).toContain('已入队');
-    const specPath = join(cfg.queueDir, 'batch-001', out.match(/(\d{2}-[a-z0-9-]+)/)![1], 'SPEC.md');
+    const specPath = join(cfg.queueDir, 'batch-001', out.match(/(task-\d{2}-[a-z0-9-]+)/)![1], 'SPEC.md');
     expect(readFileSync(specPath, 'utf-8')).toContain('## 内容大纲');
     expect(out).toContain('正文模板：系统内置模板（doc 类型）');
   });
@@ -257,7 +257,7 @@ describe('规格模板（覆盖链）', () => {
     writeFileSync(join(cfg.metaDir, 'TEMPLATES', 'doc.md'), '## 我们的文档骨架\n\n- 客户视角章节', 'utf-8');
     const out = newCommand(cfg, { goal: '写一份周报', type: 'doc', draft: true });
     expect(out).toContain('正文模板：类型模板（.taskchain/TEMPLATES/doc.md）');
-    const specPath = join(cfg.queueDir, 'batch-001', out.match(/(\d{2}-[a-z0-9-]+)/)![1], 'SPEC.md');
+    const specPath = join(cfg.queueDir, 'batch-001', out.match(/(task-\d{2}-[a-z0-9-]+)/)![1], 'SPEC.md');
     expect(readFileSync(specPath, 'utf-8')).toContain('我们的文档骨架');
   });
 

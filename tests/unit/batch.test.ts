@@ -78,7 +78,7 @@ describe('new：默认落最新批次 + 编号全局递增', () => {
   it('无批次时自动建 batch-001', () => {
     const cfg = makeCfg();
     newCommand(cfg, { goal: '写文档', draft: true });
-    expect(existsSync(join(cfg.queueDir, 'batch-001', '01-task-xiewendang', 'SPEC.md'))).toBe(true);
+    expect(existsSync(join(cfg.queueDir, 'batch-001', 'task-01-xiewendang', 'SPEC.md'))).toBe(true);
   });
 
   it('存在 batch-002 时新任务落最新批次，编号接着老批次排（全局唯一）', () => {
@@ -87,8 +87,8 @@ describe('new：默认落最新批次 + 编号全局递增', () => {
     makeTask(cfg, 'batch-002', '02-b');
     const out = newCommand(cfg, { goal: '新任务', draft: true });
     expect(out).toContain('batch-002');
-    expect(existsSync(join(cfg.queueDir, 'batch-002', '03-task-xinrenwu', 'SPEC.md'))).toBe(true);
-    expect(existsSync(join(cfg.queueDir, 'batch-001', '03-task-xinrenwu'))).toBe(false);
+    expect(existsSync(join(cfg.queueDir, 'batch-002', 'task-03-xinrenwu', 'SPEC.md'))).toBe(true);
+    expect(existsSync(join(cfg.queueDir, 'batch-001', 'task-03-xinrenwu'))).toBe(false);
   });
 
   it('--batch 指定老批次：新任务落老批次，编号仍全局递增', () => {
@@ -97,7 +97,7 @@ describe('new：默认落最新批次 + 编号全局递增', () => {
     mkdirSync(join(cfg.queueDir, 'batch-002'));
     const out = newCommand(cfg, { goal: '补老批次', batch: 'batch-001', draft: true });
     expect(out).toContain('batch-001');
-    expect(existsSync(join(cfg.queueDir, 'batch-001', '02-task-bulaopici', 'SPEC.md'))).toBe(true);
+    expect(existsSync(join(cfg.queueDir, 'batch-001', 'task-02-bulaopici', 'SPEC.md'))).toBe(true);
   });
 
   it('--batch 不存在的批次 → 报错不落盘', () => {

@@ -37,6 +37,12 @@ function nextSeq(nums: number[]): string {
   return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0');
 }
 
+/** 目录名取编号：'task-03-xiewendang' → 3；老格式 '03-xiewendang'/'03-task-xiewendang' 兼容；提不出（模块目录等）忽略 */
+function dirNum(name: string): number {
+  const m = name.match(/^(?:task-)?(\d+)/);
+  return m ? parseInt(m[1], 10) : NaN;
+}
+
 /** 全局编号池：跨批次扫描目录名（目录存在即占号，含空目录与模块子目录）——任务 ID 全局唯一（state.json 键不撞）的前提 */
 function allDirNums(cfg: TaskQConfig, queue: QueueScan): number[] {
   const { readdirSync, statSync } = require('fs');
@@ -46,10 +52,10 @@ function allDirNums(cfg: TaskQConfig, queue: QueueScan): number[] {
     for (const e of readdirSync(area)) {
       const full = join(area, e);
       if (!statSync(full).isDirectory()) continue;
-      nums.push(parseInt(e.split('-')[0], 10));
+      nums.push(dirNum(e));
       // 模块目录：其子任务目录同样占号
       for (const s of readdirSync(full)) {
-        if (statSync(join(full, s)).isDirectory()) nums.push(parseInt(s.split('-')[0], 10));
+        if (statSync(join(full, s)).isDirectory()) nums.push(dirNum(s));
       }
     }
   }
@@ -75,10 +81,10 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   // goal 提不出语义时用任务类型键兜底（doc/script/data…，类型即任务形态）——绝不落 'task' 哑名
   const goalSlug = toSlug(opts.goal);
   const slug = opts.name ? toSlug(opts.name) : goalSlug === 'task' ? typeDef.name : goalSlug;
-  // 普通任务同 task- 前缀（参考模块 module- 前缀的效果）：目录名 = {NN}-task-{slug}，
-  // 一眼区分于模块目录；已带前缀不叠加（--name 'task-01' 直接作 slug）；序号永远打头保排序与全局递增
-  const taskSlug = slug.startsWith('task-') ? slug : `task-${slug}`;
-  const id = `${seq}-${taskSlug}`;
+  // 普通任务同 task- 前缀（参考模块 module- 前缀的效果）：目录名 = task-{NN}-{slug}，
+  // task- 打头一眼区分于模块目录；--name 已带 task- 前缀则尊重原样（不叠加不加序号）；
+  // 序号紧跟 task- 之后，编号全局递增不变
+  const id = slug.startsWith('task-') ? slug : `task-${seq}-${slug}`;
   const shownName = opts.name ? displayName(opts.name, slug) : undefined;
 
   if (opts.group) {

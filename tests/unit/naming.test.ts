@@ -36,14 +36,14 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '写迁移文档', name: '迁移文档', draft: true });
     expect(out).toContain('qianyiwendang');
-    const spec = readFileSync(join(root, 'queue', 'batch-001', '01-task-qianyiwendang', 'SPEC.md'), 'utf-8');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-01-qianyiwendang', 'SPEC.md'), 'utf-8');
     expect(spec).toContain('name: 迁移文档');
   });
 
   it('--name 英文 → 目录直接用，不重复写 name', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     newCommand(cfg(root), { goal: '写文档', name: 'migration-docs', draft: true });
-    const spec = readFileSync(join(root, 'queue', 'batch-001', '01-task-migration-docs', 'SPEC.md'), 'utf-8');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-01-migration-docs', 'SPEC.md'), 'utf-8');
     expect(spec).not.toContain('name:');
   });
 
@@ -74,26 +74,29 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
   it('goal 提不出语义 → 兜底任务类型键，不落 task 哑名', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '！！！', type: 'script', draft: true });
-    expect(out).toContain('「01-task-script」');
-    expect(out).not.toContain('「01-task-task');
-    const spec = readFileSync(join(root, 'queue', 'batch-001', '01-task-script', 'SPEC.md'), 'utf-8');
+    expect(out).toContain('「task-01-script」');
+    expect(out).not.toContain('「task-task-script');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-01-script', 'SPEC.md'), 'utf-8');
     expect(spec).toContain('goal: ！！！');
   });
 
-  it('--name 已带 task- 前缀 → 不叠加（参考模块 module- 前缀效果）', () => {
+  it('--name 已带 task- 前缀 → 尊重原样不叠加（参考模块 module- 前缀效果）', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '写文档', name: 'task-01', draft: true });
-    expect(out).toContain('01-task-01');
-    expect(out).not.toContain('01-task-task-01');
+    expect(out).toContain('task-01');
+    expect(out).not.toContain('task-task-01');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-01', 'SPEC.md'), 'utf-8');
+    expect(spec).toContain('goal: 写文档');
   });
 
   it('无 --name → goal 含拉丁片段优先提取（默认落 task- 前缀）', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '写 MySQL 慢查询分析脚本', draft: true });
-    expect(out).toContain('01-task-mysql');
+    expect(out).toContain('task-01-mysql');
   });
 
   it('slugFromDir：剥序号 + task- 前缀得语义 slug（老目录兼容）', () => {
+    expect(slugFromDir('task-01-xiewendang')).toBe('xiewendang');
     expect(slugFromDir('01-task-xiewendang')).toBe('xiewendang');
     expect(slugFromDir('01-xiewendang')).toBe('xiewendang');
     expect(slugFromDir('module-auth')).toBe('module-auth');
