@@ -41,6 +41,10 @@ function shortHash(s: string): string {
 }
 
 export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
+  // 任务灵魂是描述：无描述不建占位任务（对齐 split 无素材拦截手势）
+  if (!opts.goal || !opts.goal.trim()) {
+    return '用法：taskq new <任务描述> [--group 模块名] [--batch 批次] [--priority 高|中|低] [--due 今天|明天|YYYY-MM-DD]\n\n示例：\n  taskq new "写三篇迁移文档，产出到 docs/"\n  taskq new "整理会议纪要" --group module-weekly-report --due 明天\n\n任务描述是必填——先想清楚要做什么，再入队。';
+  }
   // 批次定位：--batch 指定；缺省 = 最新批次（新任务落最新批次，插队先跑）；
   // 旧式 tasks 是只读兼容容器（第 0 批），不在默认落点内——新任务一律进 batch-NNN，无则建 batch-001
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);

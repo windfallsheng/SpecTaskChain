@@ -32,6 +32,16 @@ describe('task-naming：目录名 ASCII slug + 显示名', () => {
 });
 
 describe('new：中文名全拼目录 + frontmatter 显示名', () => {
+  it('裸 new（无描述）→ 提示用法不建占位任务（不再落「未命名任务」）', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-bare-'));
+    const out = newCommand(cfg(root), { goal: '' });
+    expect(out).toContain('用法：taskq new');
+    expect(out).toContain('任务描述是必填');
+    // 不建任何任务目录：queue 下只有 .taskchain 元数据，无 batch-001/task-* 残留
+    const queueDir = join(root, 'queue');
+    expect(!existsSync(join(queueDir, 'batch-001'))).toBe(true);
+    expect(scanQueue(queueDir, cfg(root).metaDir).tasks.length).toBe(0);
+  });
   it('--name 中文 → 目录全拼 + name 显示名落盘', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '写迁移文档', name: '迁移文档', draft: true });

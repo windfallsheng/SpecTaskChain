@@ -57,7 +57,7 @@ function main(): void {
         const estRaw = flag('--estimate');
         const est = estRaw !== undefined ? Number(estRaw) : undefined;
         output = newCommand(cfg, {
-          goal: goal || '未命名任务',
+          goal,
           name: flag('--name'),
           type: flag('--type'),
           draft: hasFlag('--draft'),
@@ -70,7 +70,8 @@ function main(): void {
           role: flag('--role'),
         });
         // 不带 --draft 时请求宿主 AI 接力生成规格草案——与 split 同协议：退出码 10
-        if (!hasFlag('--draft')) process.exitCode = 10;
+        // （goal 为空已被 newCommand 拦截，提示用法不是接力信号，不设退出码）
+        if (goal.trim() && !hasFlag('--draft')) process.exitCode = 10;
         break;
       }
       case 'split': {
