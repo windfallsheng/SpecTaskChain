@@ -5,12 +5,12 @@
 import { createHash } from 'crypto';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { TaskQConfig } from '../core/config';
-import { renderSpec } from '../core/task-spec';
+import { TaskQConfig, writeLastUsedBatch } from '../core/config';
+import { renderSpec, parseDue } from '../core/task-spec';
 import { ensureBatchConfig } from '../core/batch-config';
 import { resolveTaskType, listBuiltinTypes } from '../core/task-type';
 import { toSlug, hasCJK } from '../core/task-naming';
-import { scanQueue, latestBatchId, QueueScan } from '../core/queue';
+import { scanQueue, resolveDefaultBatch, QueueScan } from '../core/queue';
 import { resolveSpecTemplate, templateSourceLabel } from '../core/task-template';
 
 export interface NewOptions {
@@ -22,6 +22,7 @@ export interface NewOptions {
   priority?: string; // 优先级（P0/P1/P2 或自由值）
   tags?: string[];   // 标签（自由关键词；跨批次按主题筛选）
   estimate?: number; // 预估工时（小时）
+  due?: string;      // 截止日期（YYYY-MM-DD 或「明天/下周一」口语）
   role?: string;    // 执行角色（内置或 .taskchain/ROLES/{role}.md；type 管形态，role 管专业）
   goal: string;     // 任务描述（用户原话）
 }
@@ -45,7 +46,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   if (opts.batch && !queue.batches.some((b) => b.id === opts.batch)) {
     return `❌ 批次「${opts.batch}」不存在。现有批次：${queue.batches.map((b) => b.id).join('、') || '无（首个批次将自动创建 batch-001）'}`;
   }
-  const batchId = opts.batch || latestBatchId(queue.batches.filter((b) => b.id !== 'tasks')) || 'batch-001';
+  const batchId = opts.batch || resolveDefaultBatch(cfg, queue.batches.filter((b) => b.id !== 'tasks')) || 'batch-001';
   const tasksDir = join(cfg.queueDir, batchId);
   mkdirSync(tasksDir, { recursive: true });
   ensureBatchConfig(tasksDir); // 批次「脾气」落盘（幂等：已存在不覆盖）——batch-size/max-attempts/skip-draft 三把默认姿势
@@ -116,12 +117,14 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
         priority: opts.priority,
         tags: opts.tags,
         estimate: opts.estimate,
+        due: opts.due ? parseDue(opts.due) || opts.due : undefined,
         role: opts.role,
         draft: true,
         body: subTpl.content,
       }),
       'utf-8'
     );
+    writeLastUsedBatch(cfg, batchId); // 最近使用批次记忆：落盘即认领
     const lines = [
       `✅ 子任务已入模块「${modName}」${groupShown ? `（${groupShown}）` : ''} → 批次 ${batchId}（任务模块 = 共享 spec 的院落）`,
       '',
@@ -156,6 +159,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
       priority: opts.priority,
       tags: opts.tags,
       estimate: opts.estimate,
+      due: opts.due ? parseDue(opts.due) || opts.due : undefined,
       role: opts.role,
       // 新任务恒定 draft 骨架起步：补全规格（clarify 通过）前，taskq run 拦截（--skip-draft 可强跑）
       draft: true,
@@ -163,6 +167,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
     }),
     'utf-8'
   );
+  writeLastUsedBatch(cfg, batchId); // 最近使用批次记忆：落盘即认领
   const lines = [
     `✅ 任务「${id}」${shownName ? `（${shownName}）` : ''}已入队 → 批次 ${batchId}（draft 态：等待规格补全，补全前 taskq run 会拦截）`,
     ...(id !== baseId ? [`  撞名拼短 hash 区分：${baseId} → ${id}（重名不打架，state 键各归各）`] : []),

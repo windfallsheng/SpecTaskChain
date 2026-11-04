@@ -1,8 +1,8 @@
 // taskq list：队列清单——有哪些批次、批次内有哪些任务、各自状态与元数据
 // 筛选三扇窗：--batch 聚焦批次 / --status 按状态 / --type 按类型（AND 组合，业务挑任务的视角）
 import { TaskQConfig, readState } from '../core/config';
-import { scanQueue, latestBatchId } from '../core/queue';
-import { TaskSpec } from '../core/task-spec';
+import { scanQueue, resolveDefaultBatch } from '../core/queue';
+import { TaskSpec, daysOverdue } from '../core/task-spec';
 
 export interface ListOptions {
   batch?: string;  // 聚焦批次（batch-NNN / tasks / all；缺省 = 全批次展示）
@@ -10,11 +10,16 @@ export interface ListOptions {
   type?: string;   // 按类型筛选（doc/script/data…）
 }
 
-/** 任务行徽章：优先级 ⚑P1 / 预估工时 ⏱8h（有才显示，不添噪） */
-function badges(t: TaskSpec): string {
+/** 任务行徽章：优先级 ⚑P1 / 预估 ⏱4h / 实耗 🕐6h / 截止 📅11-05（逾期 🔴晚N天；有才显示，不添噪） */
+function badges(t: TaskSpec, s?: ReturnType<typeof readState>[string]): string {
   const parts: string[] = [];
   if (t.priority) parts.push(`⚑${t.priority}`);
   if (t.estimate !== undefined) parts.push(`⏱${t.estimate}h`);
+  if (s?.spent !== undefined) parts.push(`🕐${s.spent}h`);
+  if (t.due) {
+    const days = daysOverdue(t.due);
+    if (days !== null) parts.push(days > 0 ? `🔴晚${days}天` : `📅${t.due.slice(5)}`);
+  }
   return parts.length ? ` ${parts.join(' ')}` : '';
 }
 
@@ -39,11 +44,12 @@ export function listCommand(cfg: TaskQConfig, opts: ListOptions = {}): string {
     return true;
   };
   const lines: string[] = ['队列清单：'];
-  const latest = latestBatchId(queue.batches);
+  // 「当前批次」注释挂默认批次：最近使用（state 记忆）> 最新——与新任务落点、run 默认跑哪里同口径
+  const defaultB = resolveDefaultBatch(cfg, queue.batches);
   let hitCount = 0;
   let total = 0;
   for (const b of batches) {
-    const batchTitle = `📦 批次 ${b.id}${b.name ? `「${b.name}」` : ''}${b.id === latest ? ' ← 当前批次（新任务落这里，run 默认跑这里）' : ''}`;
+    const batchTitle = `📦 批次 ${b.id}${b.name ? `「${b.name}」` : ''}${b.id === defaultB ? ' ← 当前批次（新任务落这里，run 默认跑这里）' : ''}`;
     const batchLines: string[] = [];
     for (const t of b.tasks) {
       total++;
@@ -52,7 +58,7 @@ export function listCommand(cfg: TaskQConfig, opts: ListOptions = {}): string {
       const s = state[t.id];
       const icon = s?.status === 'done' ? '✅' : s?.status === 'failed' ? '⛔' : s?.status === 'doing' ? '▶' : '⏳';
       const shown = t.name ? `「${t.name}」` : '';
-      batchLines.push(`  ${icon} ${t.id}${shown} [${t.type}]${badges(t)} ${t.goal.slice(0, 40)}`);
+      batchLines.push(`  ${icon} ${t.id}${shown} [${t.type}]${badges(t, s)} ${t.goal.slice(0, 40)}`);
     }
     for (const m of b.modules) {
       const subLines: string[] = [];
@@ -63,7 +69,7 @@ export function listCommand(cfg: TaskQConfig, opts: ListOptions = {}): string {
         const s = state[sub.id];
         const icon = s?.status === 'done' ? '✅' : s?.status === 'failed' ? '⛔' : s?.status === 'doing' ? '▶' : '⏳';
         const shown = sub.name ? `「${sub.name}」` : '';
-        subLines.push(`      ${icon} ${sub.id}${shown} [${sub.type}]${badges(sub)} ${sub.goal.slice(0, 36)}`);
+        subLines.push(`      ${icon} ${sub.id}${shown} [${sub.type}]${badges(sub, s)} ${sub.goal.slice(0, 36)}`);
       }
       if (subLines.length) {
         const modLabel = m.name ? `${m.id}「${m.name}」` : m.id;

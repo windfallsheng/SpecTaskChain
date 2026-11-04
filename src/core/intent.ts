@@ -1,11 +1,11 @@
 // ask 意图识别：词典匹配为主（口语入口，零学习成本）
 // 宿主 AI 负责指代消解（「上面的内容」→ 文件路径），CLI 负责意图 + 参数提取 + 精确执行
-export type IntentId = 'new' | 'clarify' | 'run' | 'execute' | 'pipeline' | 'split' | 'init' | 'status' | 'report' | 'list' | 'done' | 'reset' | 'help';
+export type IntentId = 'new' | 'clarify' | 'run' | 'execute' | 'pipeline' | 'split' | 'init' | 'status' | 'report' | 'list' | 'done' | 'reset' | 'fix' | 'help';
 
 export interface IntentResult {
   intent: IntentId;
   confidence: number;
-  params: { taskId?: string; taskName?: string; group?: string; file?: string; target?: string; hard?: boolean; batchSize?: number };
+  params: { taskId?: string; taskName?: string; group?: string; file?: string; target?: string; hard?: boolean; batchSize?: number; batchRef?: BatchRef };
   fullCommand: string;
   notes: string[];
 }
@@ -107,6 +107,133 @@ export function parseBatchSize(input: string): number | undefined {
   return CN_DIGIT[m[1]];
 }
 
+// ========== 复合意图编排（参考 speccore ask 模式4：多动作词 + 时序词 → pipeline 编排）==========
+
+/** 编排动作词（taskq 命令域）：同一意图的多个词只取最早出现位，出现位置决定步骤顺序 */
+const ACTION_WORDS: { words: string[]; intent: IntentId }[] = [
+  { words: ['澄清', '体检', '检查'], intent: 'clarify' },
+  { words: ['拆分', '切分', '拆任务'], intent: 'split' },
+  { words: ['新建', '建任务', '创建任务', '加任务'], intent: 'new' },
+  { words: ['修复'], intent: 'fix' },
+  { words: ['执行', '接力', '跑起来'], intent: 'execute' },
+  { words: ['报告', '复盘'], intent: 'report' },
+  { words: ['归档', '验收'], intent: 'done' },
+];
+
+/** 时序/并列连接词：把多个动作串成编排（「并」「再」等单字词要求多动作才有意义，检测在动作数≥2 之后） */
+const TIMING_WORDS = ['然后', '接着', '再', '最后', '之后', '并且', '并', '还要', '同时', '先'];
+
+export interface OrchestrationStep {
+  order: number;
+  intent: IntentId;
+  label: string;      // 中文步骤名
+  explanation: string; // 该步做什么
+  gate: boolean;      // 拦停点（交互模式停下问用户；--gate auto 自动通过）
+}
+
+export interface Orchestration {
+  steps: OrchestrationStep[];
+  batchRef?: BatchRef; // 模板变量：批次引用（宽口径：精确/相对位次/特征短语，语义层交给 batch-resolve）
+  batchSize?: number;  // 模板变量：批量大小（「一次领 5 个」→ 5）
+  auto: boolean;       // 「全自动/别停/不用问」→ 非交互模式
+}
+
+/** 批次引用（宽口径）：精确编号 / 相对位次（最新/上一/最早）/ 特征短语（语义层交给 batch-resolve 扫描批次内容） */
+export interface BatchRef {
+  id?: string;                   // 精确批次 ID（batch-XXX）
+  kind: 'exact' | 'latest' | 'prev' | 'first' | 'fuzzy';
+  phrase?: string;               // fuzzy 专属：语义特征词（「预算那批」→ 预算）
+}
+
+/** 特征词去壳：「加到预算那」→ 预算；剥尽只剩虚词 → 空串（视作指当前批） */
+function stripBatchDecorators(raw: string): string {
+  let p = raw;
+  for (;;) {
+    const n = p
+      .replace(/^(?:导入到|导入|并入|加入|加到|加进|放进|放到|放入|建到|建在|创建到|移入)/, '')
+      .replace(/^(?:那个|这个|进|入|到|加|放|往|在|给|向|把|将|上|的)/, '')
+      .replace(/(?:那个|这个|这|那|的|里|里面)$/, '');
+    if (n === p) break;
+    p = n;
+  }
+  return p.trim();
+}
+
+/** 批次引用解析（三层）：精确（批次002/第3批）→ 相对（最新/上一/最早）→ 特征短语（语义层） */
+export function parseBatchRef(input: string): BatchRef | undefined {
+  // 1) 精确编号：批次002 / 批次 2 / batch-002
+  const m = input.match(/批次\s*0*(\d{1,3})/);
+  if (m) return { kind: 'exact', id: `batch-${m[1].padStart(3, '0')}` };
+  const b = input.match(/batch-(\d{3})/i);
+  if (b) return { kind: 'exact', id: `batch-${b[1]}` };
+  // 2) 中文数字编号：第二批 / 第3批
+  const cn = input.match(/第([一二两三四五六七八九十\d]+)\s*批/);
+  if (cn) {
+    const n = /^\d+$/.test(cn[1]) ? parseInt(cn[1], 10) : CN_DIGIT[cn[1]];
+    if (n) return { kind: 'exact', id: `batch-${String(n).padStart(3, '0')}` };
+  }
+  // 3) 相对位次（先于特征提取，防「上一批」被当特征词）
+  if (/(?:最新|最近|当前|现在)(?:的)?(?:一|这|那)?批/.test(input)) return { kind: 'latest' };
+  if (/(^|[^加并])上(?:一|个|次|回|头)?(?:的)?(?:那|这)?批|前(?:一|个|头)?(?:的)?(?:那|这)?批|刚才(?:的)?(?:那|这)?批/.test(input)) return { kind: 'prev' };
+  if (/(?:最|头|首)(?:早|先)?(?:的)?(?:一|个|这|那)?批/.test(input)) return { kind: 'first' };
+  // 4) 特征短语（排除「批量」语境）：批字前的词，剥壳后交给语义扫描
+  const ctx = input.replace(/批量(?:执行|跑|接力|一下)?/g, ' ');
+  const f = ctx.match(/([\u4e00-\u9fa5a-zA-Z0-9_-]{1,12})批(?:次)?/);
+  if (f) {
+    const phrase = stripBatchDecorators(f[1]);
+    if (phrase) return { kind: 'fuzzy', phrase };
+    return { kind: 'latest' }; // 只剩虚词（「那批」）→ 当前语境批
+  }
+  return undefined;
+}
+
+/** 复合编排检测：≥2 个动作词 + 时序词 → 编排步骤（按语序 = 执行序）；否则 null（走单意图） */
+export function detectOrchestration(input: string): Orchestration | null {
+  const hits: { pos: number; intent: IntentId }[] = [];
+  for (const a of ACTION_WORDS) {
+    let pos = -1;
+    for (const w of a.words) {
+      const i = input.indexOf(w);
+      if (i >= 0 && (pos < 0 || i < pos)) pos = i;
+    }
+    if (pos >= 0) hits.push({ pos, intent: a.intent });
+  }
+  if (hits.length < 2) return null;
+  const hasTiming = TIMING_WORDS.some((t) => input.includes(t));
+  if (!hasTiming) return null;
+  // 「先X再Y」：先字后面的动作提到最前（语序不等于执行序的唯一边界：「执行前先澄清」→ 澄清在前）
+  for (const a of ACTION_WORDS) {
+    for (const w of a.words) {
+      if (new RegExp(`先\\s*${w}`).test(input)) {
+        const h = hits.find((x) => x.intent === a.intent);
+        if (h) h.pos = -999;
+      }
+    }
+  }
+  // 同意图去重（「澄清并体检」算一步）+ 按出现位置排序（用户语序即执行序）
+  const seen = new Set<IntentId>();
+  const ordered = hits
+    .filter((h) => (seen.has(h.intent) ? false : (seen.add(h.intent), true)))
+    .sort((x, y) => x.pos - y.pos);
+  if (ordered.length < 2) return null;
+  // 步骤知识表：label/说明/拦停点（编排域收敛，非编排域的意图不进表）
+  const LABELS: Record<string, { label: string; explanation: string; gate: boolean }> = {
+    clarify: { label: '体检澄清', explanation: 'taskq clarify 全量体检；阻塞项先修（taskq fix --yes 机械项），非全绿不往下走', gate: true },
+    split: { label: '拆分任务', explanation: '素材拆成任务草案落盘（单独任务 + 模块级任务）；拆分清单给用户确认', gate: true },
+    new: { label: '新建任务', explanation: '对话成规格，draft 骨架落盘', gate: false },
+    fix: { label: '自动修复', explanation: 'taskq fix --yes 应用机械修复', gate: false },
+    execute: { label: '接力执行', explanation: 'taskq execute 批量接力，宿主 AI 循环续跑直到队列清空', gate: true },
+    report: { label: '生成报告', explanation: 'taskq report 执行留痕复盘', gate: false },
+    done: { label: '归档收尾', explanation: 'taskq done 验收归档', gate: false },
+  };
+  return {
+    steps: ordered.map((h, i) => ({ order: i + 1, intent: h.intent, ...LABELS[h.intent] })),
+    batchRef: parseBatchRef(input),
+    batchSize: parseBatchSize(input),
+    auto: /(?:全自动|自动完成|自动跑|别停|不用问|不需要确认|一路到底|无需确认)/.test(input),
+  };
+}
+
 /** 识别意图：词典匹配 + 优先级加成（按 triggers 定义序） */
 export function recognizeIntent(input: string): IntentResult {
   const lower = input.toLowerCase();
@@ -129,6 +256,7 @@ export function recognizeIntent(input: string): IntentResult {
       if (m) params.taskId = m[1];
       const fm = input.match(/--file\s+(\S+)/);
       if (fm) params.file = fm[1];
+      params.batchRef = parseBatchRef(input); // 批次引用（宽口径）：execute/run/report/list/status/split 通用
       // 创建命名：--name X / --group X / 「叫/名为 X 的」/ 「X 模块」
       const nm = input.match(/--name\s+(\S+)/);
       if (nm) params.taskName = nm[1];

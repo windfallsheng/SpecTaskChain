@@ -34,6 +34,9 @@ CLI 输出中的 `[TASKQ_*]` 块是给宿主 AI 的结构化交接信号，全�
 | `[TASKQ_PROMPT]` / `[TASKQ_PROMPT_END]` | `run` / `execute` | 完整执行 prompt 块，宿主 AI 按块内容执行 |
 | `[TASKQ_SPEC_DRAFT]` | `new` | 宿主 AI 生成规格草案并写回 SPEC.md（补全 output/acceptance 三态） |
 | `[TASKQ_PIPELINE]` / `[TASKQ_PIPELINE_END]` | `pipeline` | 流水线剧本块，宿主 AI 按剧本编排多命令 |
+| `[TASKQ_ORCHESTRATE]` / `[/TASKQ_ORCHESTRATE]` | `ask`（复合意图） | 多动作词 + 时序词命中时的编排剧本（步骤/命令/拦停点/模式），宿主 AI 按序接力 |
+| `[TASKQ_RUN_PLAN]` / `[/TASKQ_RUN_PLAN]` | `run`（阶段参数） | 阶段流水线剧本（clarify → split → execute → report），preset/范围语法触发 |
+| `[TASKQ_NEEDS_INFO]` / `[/TASKQ_NEEDS_INFO]` | `ask`/`run`（缺参数） | 参数缺失提示：拆分缺素材等（给出示例，不猜） |
 | `[TASKQ_GUIDE: <path>]` | `init` | HTML 引导页路径，宿主 AI 用 present_files 展示给用户 |
 
 ## 执行 prompt 的四段增强（CLI 保证读到的是真的）

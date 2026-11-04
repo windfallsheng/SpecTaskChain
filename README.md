@@ -51,16 +51,16 @@ taskq ask "看下进度"                                 # 口语入口（识别
 | :--- | :--- |
 | `taskq init [--tools 工具名[,工具名]] [--update]` | 初始化队列骨架（幂等）+ 生成/刷新宿主工具接力规则（qoder/claude/cursor/windsurf/trae/codex） |
 | `taskq new <描述> [--type 类型] [--group 模块名] [--batch 批次] [--priority P1] [--tags a,b] [--estimate 8] [--draft]` | 建任务/模块子任务（恒定 draft 骨架起步） |
-| `taskq clarify [--task ID] [--file 路径] [--chain]` | 随叫随到的体检（四入口） |
-| `taskq pipeline <描述或文件或目录> [--type 类型] [--group 模块] [--batch 批次] [--batch-size N]` | 端到端流水线（素材进→拆分→澄清→执行→收尾，编排归宿主 AI） |
-| `taskq run [--skip-draft] [--batch 批次\|all] [--task ID] [--module 模块ID]` | 无人值守接力执行（默认聚焦最新批次；输出下一任务 prompt + 退出码；--task/--module 定向单任务/单模块） |
+| `taskq clarify [--task ID] [--file 路径] [--chain] [--decide]` | 随叫随到的体检（四入口；exec 档风险带推荐方案+评分，--decide 判断题逐项裁决） |
+| `taskq pipeline <描述或文件或目录> [--type 类型] [--group 模块] [--batch 批次] [--batch-size N] [--auto]` | 端到端流水线（素材进→拆分→澄清→执行→收尾；交互/非交互双模式；截图入口） |
+| `taskq run [--skip-draft] [--batch 批次\|all] [--task ID] [--module 模块ID]` | 智能续跑（无参：断点面板 + 下一任务 prompt；带阶段参数：preset/范围流水线剧本，如 `run clarify to execute`，`--auto` 全自动闸口） |
 | `taskq execute [--batch-size N] [--skip-draft] [--batch 批次\|all] [--task ID] [--module 模块ID]` | 批次接力（一次领取 N 个任务的完整 prompt，默认 3；拦停语义同 run） |
 | `taskq reset <task-id|模块ID|batch-NNN|--all> [--hard]` | 重跑复位（状态回 todo；软复位留痕保留=调整补充，--hard 清留痕=从头再来） |
 | `taskq done <task-id> [--verdict "..."]` | 验收登记（产物/断言/评审三态门禁） |
 | `taskq list [--batch 批次] [--status 状态] [--type 类型]` | 队列清单（按批次分组，三扇窗筛选） |
 | `taskq status [--panel] [--batch 批次\|all]` | 队列总览（--panel 生成 HTML 可视化面板） |
 | `taskq report [--batch 批次] [--status 状态] [--type 类型]` | 队列报告（执行留痕，有账可查） |
-| `taskq ask "自然语言"` | 口语入口（建任务/拆分/流水线/批量执行/澄清/跑队列/重跑/看进度/报告） |
+| `taskq ask "自然语言"` | 口语入口（建任务/拆分/流水线/批量执行/澄清/跑队列/重跑/看进度/报告 + 复合意图编排：「澄清并执行」不再丢段） |
 
 完整参数与行为见 [docs/commands.md](docs/commands.md)。
 
@@ -74,7 +74,8 @@ taskq ask "看下进度"                                 # 口语入口（识别
 | [docs/directory-layout.md](docs/directory-layout.md) | 项目目录布局：队列本体 / 产出落位 / 用户自组织区（docs·data·research·materials 都是干什么的） |
 | [docs/acceptance.md](docs/acceptance.md) | 验收三态门禁详解 + 留痕即产物原则 |
 | [docs/relay-protocol.md](docs/relay-protocol.md) | AI 接力协议：退出码、prompt 块、跨工具续跑 |
-| [docs/clarify.md](docs/clarify.md) | 澄清体检：四入口、三级信号、处理四式 |
+| [docs/clarify.md](docs/clarify.md) | 澄清体检：四入口、四级信号、处理四式 + 判断题裁决 |
+| [docs/scenarios.md](docs/scenarios.md) | 场景手册：七个典型场景的完整过程（手动把关 vs 自动推进两条路线对照，输出均取自真实运行） |
 | [docs/commands.md](docs/commands.md) | 命令参考大全 |
 | [docs/design.md](docs/design.md) | 设计决策、能力边界与路线图 |
 
@@ -130,8 +131,10 @@ queue/
 - **执行角色（role）**：type 管形态、role 管专业——内置 10 专业化角色（document-writer/code-engineer/debug-engineer/data-analyst…，旧名别名兼容）+ 自定义 .taskchain/ROLES/（同名覆盖内置，applies-to 按类型/任务自动套用）；什么都没指定时 AI 按任务内容自动选角（类型建议可推翻）
 - **规格模板**：正文按模板骨架落盘——任务 TEMPLATE.md > .taskchain/TEMPLATES/{类型}.md > TEMPLATES/SPEC.md 通用 > 系统内置，用户逐层覆盖
 - **批次接力（execute）**：一次领取 N 个任务的完整 prompt，宿主 AI 按序执行、逐个 done、连续取批
-- **端到端流水线（pipeline）**：素材（描述/文件/目录）进 → 拆分 → 澄清 → 批次执行 → 复盘，三个拦停点保人工确认
-- `taskq split`：从一份文档拆分出任务草案（拆 → 确认 → 逐个完善）
+- **run 阶段流水线**：无参智能续跑（断点面板 + 单任务接力）；preset/范围剧本（`run clarify` / `run clarify to execute`）；`--auto` 全自动闸口（拦停点自动通过，仅失败停下）
+- **端到端流水线（pipeline）**：素材（描述/文件/目录/截图）进 → 拆分 → 澄清 → 批次执行 → 复盘；交互/非交互双模式（--auto），拦停点 3 失败永停
+- **ask 复合意图编排**：多动作词 + 时序词命中即编排剧本（「澄清所有任务，然后批量执行」不再丢段）；缺参数 NEEDS_INFO 提示
+- `taskq split`：文档/文字/截图拆任务草案（模块级任务识别 + 混乱内容容错；截图先视觉读取；--auto 不拦停）
 - 引用消解：SPEC 中引用的文件/图片/链接由 CLI 读取真实内容嵌入 prompt
 - 模块约束加固：CONSTRAINTS.md 缺失即阻塞，绝不静默裸奔
 - 执行留痕：PROGRESS.md 承载步骤级进度，断点恢复到 skill 步骤边界

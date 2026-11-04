@@ -25,11 +25,14 @@ export interface ClarifyIssue {
   options?: ExecOption[]; // exec 档专属：方案菜单（用户选哪条路 AI 就能继续）
 }
 
-/** 可执行性风险的一个可选方案：谁来做 + 具体怎么做 */
+/** 可执行性风险的一个可选方案：谁来做 + 具体怎么做 + 推荐评分（帮用户做判断题） */
 export interface ExecOption {
   title: string; // 方案名（如「换自动化通道」）
   who: 'ai' | 'human' | 'both'; // 执行主体：AI / 人 / 人机协作
   how: string; // 怎么做：改什么 AI 就能执行 / 换什么内容 / 闸口分工线
+  score?: number; // 推荐评分（10 分制，高者置顶；无评分按原序）
+  recommended?: boolean; // 推荐方案（每类信号唯一标记：终端/HTML 置顶 + ✅ 徽章）
+  reason?: string; // 推荐理由（recommended 时必填，让用户做判断题而不是选择题）
 }
 
 /** 高危模糊词：不可验收的表达 */
@@ -41,6 +44,7 @@ const AMBIGUOUS_REFS = ['那几个', '相关资料', '这些文件', '那些东�
 /**
  * 可执行性风险信号库：CLI 确定性检测 AI 能力圈边界的表达（词表命中，零成本）
  * 每类 = 风险本质 + 方案菜单（2-3 个可选方案，覆盖三条出路：改什么 AI 就能做 / 换什么内容 AI 能做 / 人机分工闸口线）
+ * 每条方案带评分（10 分制），唯一 ✅ 推荐方案附推荐理由——用户做判断题（采纳/换/跳过）而不是选择题
  * 命中 → 亮给用户选方案，不拦接力（exec 档）
  */
 interface ExecSignal {
@@ -56,9 +60,9 @@ const EXEC_SIGNALS: ExecSignal[] = [
     label: '认证凭据',
     risk: '需要用户在场完成认证（AI 无账号、无生物凭证、收不到验证码）',
     options: [
-      { title: '补测试凭据', who: 'both', how: '提供测试账号/固定验证码/预置登录态，AI 拿到就能全程自动化执行' },
-      { title: '换自动化通道', who: 'ai', how: '改用 API token/密钥调用（放 CI 环境变量），绕开交互式认证' },
-      { title: '人机分工：AI 做到闸口', who: 'both', how: 'AI 写好流程/脚本/材料，认证动作由人完成，通过后 AI 接力' },
+      { title: '补测试凭据', who: 'both', how: '提供测试账号/固定验证码/预置登录态，AI 拿到就能全程自动化执行', score: 9, recommended: true, reason: '直接补上 AI 缺的凭证，自动化程度最高、改动最小' },
+      { title: '换自动化通道', who: 'ai', how: '改用 API token/密钥调用（放 CI 环境变量），绕开交互式认证', score: 8 },
+      { title: '人机分工：AI 做到闸口', who: 'both', how: 'AI 写好流程/脚本/材料，认证动作由人完成，通过后 AI 接力', score: 7 },
     ],
   },
   {
@@ -66,9 +70,9 @@ const EXEC_SIGNALS: ExecSignal[] = [
     label: '权限审批',
     risk: '需要高权限或人工审批（AI 无权限，也不能替人审批）',
     options: [
-      { title: '划权限边界', who: 'both', how: '明确 AI 可用的账号与操作范围（如开发环境专用账号、目录白名单）' },
-      { title: '换验证环境', who: 'ai', how: '需审批的步骤改在本地沙箱/mock 环境验证，验证通过后再走正式审批' },
-      { title: '人机分工：AI 备料人审批', who: 'both', how: 'AI 产出申请材料与操作清单，审批/授权由人完成' },
+      { title: '划权限边界', who: 'both', how: '明确 AI 可用的账号与操作范围（如开发环境专用账号、目录白名单）', score: 9, recommended: true, reason: '白名单与操作范围一次划定，AI 在边界内全程自主' },
+      { title: '换验证环境', who: 'ai', how: '需审批的步骤改在本地沙箱/mock 环境验证，验证通过后再走正式审批', score: 8 },
+      { title: '人机分工：AI 备料人审批', who: 'both', how: 'AI 产出申请材料与操作清单，审批/授权由人完成', score: 7 },
     ],
   },
   {
@@ -76,9 +80,9 @@ const EXEC_SIGNALS: ExecSignal[] = [
     label: '物理动作',
     risk: '物理动作 AI 没有手（寄件/盖章/插设备等只能人来）',
     options: [
-      { title: '换数字化替代', who: 'ai', how: '电子签章/电子签名/云打印，AI 可全程执行并可留电子回执验收' },
-      { title: '砍掉物理环节', who: 'ai', how: '改成 AI 可验证的产出（发电子版、留电子回执），实体环节另立任务给人' },
-      { title: '人机分工：AI 备料人跑腿', who: 'both', how: 'AI 准备全套材料与核对清单，动作由人完成，留痕后 AI 接力' },
+      { title: '换数字化替代', who: 'ai', how: '电子签章/电子签名/云打印，AI 可全程执行并可留电子回执验收', score: 9, recommended: true, reason: '数字化替代让 AI 全程可执行，且电子回执天然可验收' },
+      { title: '砍掉物理环节', who: 'ai', how: '改成 AI 可验证的产出（发电子版、留电子回执），实体环节另立任务给人', score: 8 },
+      { title: '人机分工：AI 备料人跑腿', who: 'both', how: 'AI 准备全套材料与核对清单，动作由人完成，留痕后 AI 接力', score: 6 },
     ],
   },
   {
@@ -86,9 +90,9 @@ const EXEC_SIGNALS: ExecSignal[] = [
     label: '平台账号',
     risk: '需要第三方平台后台账号操作（AI 无平台账号）',
     options: [
-      { title: '补自动化凭据', who: 'both', how: '提供开放平台 API/密钥（如公众号 appid+secret），AI 走接口代替后台点击' },
-      { title: '换验收方式', who: 'ai', how: 'AI 产出内容 + 操作步骤清单，后台发布由人，发布结果截图留痕验收' },
-      { title: '人机分工：AI 备料人发布', who: 'both', how: 'AI 产出全部素材与步骤，后台点击由人完成' },
+      { title: '补自动化凭据', who: 'both', how: '提供开放平台 API/密钥（如公众号 appid+secret），AI 走接口代替后台点击', score: 9, recommended: true, reason: '开放平台 API 化后 AI 全程执行，彻底摆脱后台点击' },
+      { title: '换验收方式', who: 'ai', how: 'AI 产出内容 + 操作步骤清单，后台发布由人，发布结果截图留痕验收', score: 8 },
+      { title: '人机分工：AI 备料人发布', who: 'both', how: 'AI 产出全部素材与步骤，后台点击由人完成', score: 7 },
     ],
   },
   {
@@ -96,9 +100,9 @@ const EXEC_SIGNALS: ExecSignal[] = [
     label: '资金合规',
     risk: '涉及资金/合同/合规动作（AI 不能也不该直接执行）',
     options: [
-      { title: '换验证环境', who: 'ai', how: '用沙箱/测试通道支付（金额虚构）验证流程，AI 可执行' },
-      { title: '砍成准备态', who: 'ai', how: 'AI 只做对账单/合同稿/投标文件，资金动作另立任务给人执行' },
-      { title: '人机分工：AI 备料人审批', who: 'both', how: 'AI 准备材料，人审批执行，凭证留痕进验收' },
+      { title: '换验证环境', who: 'ai', how: '用沙箱/测试通道支付（金额虚构）验证流程，AI 可执行', score: 9, recommended: true, reason: '沙箱验证让 AI 全程可执行，且不触碰合规红线' },
+      { title: '砍成准备态', who: 'ai', how: 'AI 只做对账单/合同稿/投标文件，资金动作另立任务给人执行', score: 8 },
+      { title: '人机分工：AI 备料人审批', who: 'both', how: 'AI 准备材料，人审批执行，凭证留痕进验收', score: 7 },
     ],
   },
   {
@@ -106,9 +110,9 @@ const EXEC_SIGNALS: ExecSignal[] = [
     label: '外部等待',
     risk: '依赖外部响应，AI 只能做到闸口（无法催外部世界）',
     options: [
-      { title: '改触发条件', who: 'ai', how: '把「等回复」改成可判定的信号（如邮件主题过滤/状态接口轮询），AI 可自动判断' },
-      { title: '换执行时机', who: 'both', how: '任务改待命态（draft），人收到消息后标记执行条件满足，AI 再接力' },
-      { title: '人机分工：AI 备模板人跟进', who: 'both', how: 'AI 写好跟进模板与提醒，等待期间由人手动推进' },
+      { title: '改触发条件', who: 'ai', how: '把「等回复」改成可判定的信号（如邮件主题过滤/状态接口轮询），AI 可自动判断', score: 9, recommended: true, reason: '把「等」改造成可判定信号，AI 自动判断、无人值守' },
+      { title: '换执行时机', who: 'both', how: '任务改待命态（draft），人收到消息后标记执行条件满足，AI 再接力', score: 8 },
+      { title: '人机分工：AI 备模板人跟进', who: 'both', how: 'AI 写好跟进模板与提醒，等待期间由人手动推进', score: 6 },
     ],
   },
 ];
@@ -117,11 +121,12 @@ const EXEC_SIGNALS: ExecSignal[] = [
  * 文本级可执行性信号扫描：任务 SPEC（goal+正文）与模块共享约束（CONSTRAINTS.md）共用同一套词表
  * prefix：上下文前缀（任务为空；模块为「模块「X」公共约束：」），让报告里一眼分清风险出自哪里
  */
-function scanExecSignals(text: string, id: string, prefix: string): ClarifyIssue[] {
+function scanExecSignals(text: string, id: string, prefix: string, skipLabels?: Set<string>): ClarifyIssue[] {
   const issues: ClarifyIssue[] = [];
   const reported = new Set<string>();
   for (const sig of EXEC_SIGNALS) {
     if (reported.has(sig.label)) continue;
+    if (skipLabels?.has(sig.label)) continue; // 已决信号跳过（SPEC.md decisions 留痕，采纳过的类别不再报）
     const hit = text.match(sig.re);
     if (hit) {
       reported.add(sig.label);
@@ -141,7 +146,9 @@ function scanExecSignals(text: string, id: string, prefix: string): ClarifyIssue
  * 同任务同类别只报一次（取首个命中词）
  */
 export function detectExecRisks(spec: TaskSpec): ClarifyIssue[] {
-  return scanExecSignals(`${spec.goal}\n${spec.body}`, spec.id, '');
+  // 已决信号跳过：SPEC.md frontmatter decisions（「风险标签→方案名」）里裁决过的类别不再报
+  const decided = new Set((spec.decisions || []).map((d) => d.split(/[→:：]/)[0].trim()));
+  return scanExecSignals(`${spec.goal}\n${spec.body}`, spec.id, '', decided);
 }
 
 /**
@@ -197,6 +204,12 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyI
   }
   // —— 可执行性风险：AI 能力圈边界（认证/权限/物理动作/平台账号/资金合规/外部等待）——
   issues.push(...detectExecRisks(spec));
+  // —— 工时体检：估了才长得出偏差账；单任务过重（>40h）估算失真，建议拆开接力 ——
+  if (spec.estimate === undefined) {
+    issues.push({ level: 'suggest', taskId: spec.id, message: '未估工时（estimate）——报告汇总不出预估总量，也长不出「预估 vs 实际」偏差账；建议 SPEC.md 补 estimate 字段' });
+  } else if (spec.estimate > 40) {
+    issues.push({ level: 'suggest', taskId: spec.id, message: `预估工时 ${spec.estimate}h 单任务过重——估算容易失真，建议拆成多个任务接力（taskq split）` });
+  }
   // —— 角色体检：声明了但未定义 → 执行时回退通才，先亮明再跑 ——
   if (spec.role && !resolveTaskRole(findMetaDir(spec.dir), spec.role)) {
     issues.push({ level: 'suggest', taskId: spec.id, message: `角色「${spec.role}」未定义（内置：${listBuiltinRoles().join('/')}）——执行时回退通才；要专业化就补 .taskchain/ROLES/${spec.role}.md 或改 role 字段` });
@@ -349,10 +362,13 @@ export function renderClarifyReport(issues: ClarifyIssue[]): string {
     lines.push(`### ${icon} ${title}（${list.length}）`, '');
     for (const i of list) {
       lines.push(`- [${i.taskId}] ${i.message}`);
-      // exec 档：方案菜单——每条方案标明谁来做（🤖 AI / 👤 人 / 🤝 人机协作）+ 怎么做
-      for (const o of i.options || []) {
+      // exec 档：方案菜单——✅ 推荐置顶（评分+理由），其余按分跟排；标明谁来做（🤖/👤/🤝）+ 怎么做
+      const sorted = [...(i.options || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
+      for (const o of sorted) {
         const whoIcon = o.who === 'ai' ? '🤖' : o.who === 'human' ? '👤' : '🤝';
-        lines.push(`  · ${whoIcon} ${o.title}：${o.how}`);
+        const rec = o.recommended ? '✅ 推荐 ' : '';
+        const score = o.score !== undefined ? ` ${o.score}/10` : '';
+        lines.push(`  · ${rec}${whoIcon} ${o.title}${score}：${o.how}${o.recommended && o.reason ? `（推荐理由：${o.reason}）` : ''}`);
       }
     }
     lines.push('');
@@ -361,7 +377,7 @@ export function renderClarifyReport(issues: ClarifyIssue[]): string {
   section('建议', suggest, '⚠️');
   section('待定', pending, '⏳');
   section('可执行性风险', exec, '🤖');
-  lines.push('处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险从方案菜单选一条：改什么 AI 就能做 / 换什么内容 AI 能做 / 人机分工（AI 做闸口内，人做闸口外）');
+  lines.push('处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险从方案菜单选一条（✅ 推荐带评分与理由）：改什么 AI 就能做 / 换什么内容 AI 能做 / 人机分工（AI 做闸口内，人做闸口外）；逐项裁决：taskq clarify --task <ID> --decide（y 采纳 / n 换方案 / s 跳过，采纳写回 SPEC.md decisions）');
   return lines.join('\n');
 }
 
@@ -385,7 +401,11 @@ export function renderClarifyHtml(issues: ClarifyIssue[]): string {
           .map(
             (i) =>
               `<div class="item"><b>${escHtml(i.taskId)}</b><p>${escHtml(i.message)}</p>${(i.options || [])
-                .map((o) => `<div class="opt">${whoTag(o.who)}<b>${escHtml(o.title)}</b><span class="how">${escHtml(o.how)}</span></div>`)
+                .sort((a, b) => (b.score || 0) - (a.score || 0))
+                .map(
+                  (o) =>
+                    `<div class="opt${o.recommended ? ' rec' : ''}">${whoTag(o.who)}${o.recommended ? '<span class="rec-tag">✅ 推荐</span>' : ''}<b>${escHtml(o.title)}</b>${o.score !== undefined ? `<span class="score">${o.score}/10</span>` : ''}<span class="how">${escHtml(o.how)}${o.recommended && o.reason ? `<span class="why">推荐理由：${escHtml(o.reason)}</span>` : ''}</span></div>`,
+                )
                 .join('')}</div>`,
           )
           .join('')}</div>`
@@ -420,6 +440,10 @@ h1{font-size:26px;margin-bottom:4px}
 .who.ai{background:#e0e7ff;color:#4338ca}
 .who.human{background:#fef3c7;color:#b45309}
 .who.both{background:#ecfdf5;color:#047857}
+.opt.rec{background:#eef2ff;border-color:#c7d2fe}
+.rec-tag{font-size:11px;background:#4f46e5;color:#fff;border-radius:6px;padding:1px 6px;font-weight:700;white-space:nowrap}
+.score{font-size:11px;background:#f1f5f9;color:#475569;border-radius:6px;padding:1px 6px;font-weight:700;white-space:nowrap}
+.opt .why{display:block;color:#6d28d9;font-size:12px;margin-top:2px}
 .clean{background:#fff;border-radius:10px;padding:40px 20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .clean .big{font-size:44px}
 .clean p{color:#64748b;font-size:14px;margin:8px 0 0}
@@ -436,7 +460,7 @@ h1{font-size:26px;margin-bottom:4px}
   <div class="stat"><b style="color:#6366f1">${exec.length}</b>🤖 可执行性</div>
 </div>
 ${body}
-${issues.length ? '<div class="tip">处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险从方案菜单选一条：改什么 AI 就能做 / 换什么内容 AI 能做 / 人机分工（AI 做闸口内，人做闸口外）</div>' : ''}
+${issues.length ? '<div class="tip">处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险从方案菜单选一条（✅ 推荐带评分与理由）：改什么 AI 就能做 / 换什么内容 AI 能做 / 人机分工（AI 做闸口内，人做闸口外）；逐项裁决：taskq clarify --task &lt;ID&gt; --decide（y 采纳 / n 换方案 / s 跳过，采纳写回 SPEC.md decisions）</div>' : ''}
 </body>
 </html>`;
 }

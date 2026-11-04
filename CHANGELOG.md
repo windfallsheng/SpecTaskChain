@@ -1,5 +1,49 @@
 # CHANGELOG
 
+## 0.2.30（2026-11-04）
+
+**场景手册（docs/scenarios.md）**。说明文档补全：七个典型场景的完整使用过程——手动把关 vs 自动推进双路线对照、「自动」三层辨析（无人值守接力 / 编排非交互 / 静默应用）、pipeline 双模式逐句对照、任务失败与重跑双路修复、多批次并行；所有输出示例取自真实 CLI 运行；README / quick-start / commands.md 三处导航打通。
+
+**clarify 推荐方案 + 评分 + 判断题通道**。可执行性风险（exec 档）每条方案带 10 分制评分与唯一 ✅ 推荐方案（附推荐理由），`--decide` 判断题逐项裁决（y 采纳 / n 换方案 / s 跳过），采纳写回 SPEC.md `decisions` 留痕，下次体检自动跳过已决信号。
+
+- **数据层**：ExecOption 扩展 score/recommended/reason；六类 exec 信号（认证凭据/权限审批/物理动作/平台账号/资金合规/外部等待）全部预置评分（9/8/7 或 9/8/6）与唯一推荐 + 推荐理由
+- **渲染层**：终端与 CLARIFY.html 推荐方案置顶 + 评分徽章 + 推荐理由（✅ 推荐 / score/10 / 推荐理由行）
+- **交互层**：`clarify --decide` 判断题通道——TTY 逐项裁决（y 采纳 / n 换方案 / s 跳过）；非 TTY 只提示不等待；`overwrite: false` 任务与模块级 exec issue 只提示不落盘；采纳前原 SPEC.md 归档 sources/（与 fix 同手法）
+- **已决跳过**：SPEC.md frontmatter `decisions`（风险标签→方案名）裁决过的类别下次体检不再报
+- **修复**：readLineSync EAGAIN 缺陷（node 把 TTY stdin 置非阻塞，无输入时 readSync 立即抛 EAGAIN 导致交互闪退；fix 的 TTY 确认同病）——EAGAIN/EWOULDBLOCK 时 Atomics.wait 休眠重试
+- 测试 365（新增 clarify-decide 9：六信号唯一推荐 / HTML 推荐置顶 / 已决跳过 / frontmatter 往返 / applyDecision 幂等与归档 / --decide 非 TTY 三态）
+
+**ask 懒人批次解析（三层递进）**。用户嘴里的「预算那批」「上一批」不再是死格式——精确编号 → 相对位次 → 特征短语语义扫描，三层落定真实批次；平局/零命中不瞎猜，亮候选清单交 AI。
+
+- **口径识别**（parseBatchRef）：批次002 / batch-003 / 第二批 → 精确；最新/上一/最早那批 → 相对位次；「预算那批」→ 特征短语（剥壳去虚词）；「批量执行」不误伤
+- **语义落定**（batch-resolve）：精确编号存在性校验 / 位次按数字序定位（单批次「上一批」= 它并注明）/ 特征短语扫批次内容打分（完整包含 +3、双字滑窗 +1），唯一最高分直落，平局或零命中 → 候选清单（批次名 + 任务数 + 命中证据）
+- **ask 七路接入**：run/execute/status/report/list/new 全部先行裁决（未决输出 [TASKQ_NEEDS_INFO] 候选清单，退出码 0 不接力）；编排剧本批次模板落定后注入 --batch（�� 批次行附语义证据）
+- 测试 382（新增 batch-resolve 17：口径识别 4 / 语义落定 8 / 候选渲染 1 / ask 端到端 4）
+
+**最近使用批次默认（没明说就回最近干活的地方）**。用户不提批次时，不再一律跳「最新批次」——state.json 记 lastUsedBatch，run/execute/new/done 的写操作自动认领；昨天一直跑 batch-001，今天说「继续跑」就回 batch-001，不会跳去编号更大的 batch-002。
+
+- **状态层**：state.json 顶层 lastUsedBatch（原子落盘，不碰 tasks 原账）；resolveDefaultBatch = 最近使用（须批次仍存在）> 最新；selectBatch 第三参接默认批次
+- **写点认领**：run/execute 接力领取 / new 落盘 / done 验收通过，四处写操作自动记忆；queueSummary 对「最近使用 ≠ 最新」亮「← 最近使用」标记
+- **ask 空引用裁决**：settleBatch 不再空手而归——无批次词的六路命令与编排剧本默认落最近使用批次
+- 测试 397（新增 2：最近使用优先落 batch-001 而非最新 / 记忆批次已删回退最新）
+
+**工时与截止：实际工时（--spent）+ 截止日期（--due）+ 偏差账**。任务数据补齐平常工作最常用的两个维度——预估之外有实耗，报告自动长出「预估 vs 实际」差值栏与偏差汇总；截止日期让计划感落进任务，逾期亮红。
+
+- **数据层**：TaskSpec 新增 `due`（口语「今天/明天/下周X」parseDue 自动转 YYYY-MM-DD）；TaskRunState 新增 `spent`（done 验收登记，attempts/doneAt 同层持久）
+- **入口**：`new --due 明天` / `done --spent 6`（cli 双路透传，spent 非法值静默）
+- **展示层**：list 任务行 🕐实耗 + 📅截止徽章（逾期 🔴晚N天）；status 逾期计数；report 工时账（实际总工时 / 预估 vs 实际差值（超支+/省时-/持平）/ 偏差明细 / 逾期清单），REPORT.html 同步（工时（估/实）列 + 逾期红卡）；daysOverdue 公共口径三处共用
+- **clarify 工时体检**：estimate 缺失（长不出偏差账）或单任务 >40h（估算失真，建议 taskq split）→ 建议档
+- 测试 395（新增 hours 13：due 口语解析 4 / spent 登记 2 / report 偏差账与逾期 4 / list 红标 1 / clarify 体检 3）
+
+**ask 编排 + run 流水线 + split/pipeline 双模式（参考 speccore 精髓）**。一句话带多个动作不再丢段；run 从单任务接力升级为阶段流水线推进器；截图/乱文档也能拆任务，交互/非交互双模式。
+
+- **ask 复合意图编排**（speccore 模式4）：多动作词 + 时序词（然后/接着/再/最后/并且/同时/先）命中 → `[TASKQ_ORCHESTRATE]` 编排剧本（步骤/命令/拦停点/模式），宿主 AI 按序接力；「先X再Y」语序特判（执行前先澄清 → 澄清在前）；模板变量提取（批次002 → batch-002 / 一次领 5 个 → 5 / 全自动 → 非交互）；拆分缺素材 → `[TASKQ_NEEDS_INFO]`
+- **run 阶段流水线**：无参 = 智能续跑（断点面板 + 单任务接力，退出码协议不变）；preset/范围语法（`run clarify`、`run clarify to execute`、`run split docs/prd.md`，中文别名体检/拆分/执行/报告）；`--auto` 全自动闸口（拦停点自动通过，仅失败停下）；范围含 split 且无素材 → NEEDS_INFO
+- **split 增强**：截图入口（图片素材 → 第 0 步视觉读取转文字清单，忠实原文不脑补）；模块级任务识别（标题层级 → 模块 + 子任务，共享前提 → --group 聚合）；混乱内容容错（条目骨架梳理/散点聚合/无结构按段落切并标注复核）；`--auto` 非交互（清单即确认直接往下）
+- **pipeline 双模式**：默认交互（拦停点 1/2 停下问用户）；`--auto` 非交互（拦停点 1/2 自动通过）；拦停点 3（任务失败）两种模式都停；截图入口同 split
+- 新增标记协议：`[TASKQ_ORCHESTRATE]` / `[TASKQ_RUN_PLAN]` / `[TASKQ_NEEDS_INFO]`
+- 测试 355（新增 orchestrate 28：编排/范围解析/剧本/截图/双模式）
+
 ## 0.2.29（2026-11-04）
 
 **命名简化：去掉序号，重名拼短 hash**。用户不关注目录顺序——任务名来自 `--name` 或从 goal 提取的语义 slug，目录不再带序号；同名时拼内容短 hash 区分（重名不打架）。

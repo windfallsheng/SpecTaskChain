@@ -19,8 +19,19 @@ export interface FixOptions {
   forceOverwrite?: boolean; // 覆盖开关（临时）：当次强制覆盖（压过批次配置 overwrite: false）
 }
 
-/** 同步读一行 stdin（TTY 交互用；非 TTY 读不到输入返回空串） */
-function readLineSync(prompt: string): string {
+/** 同步睡眠（node 无内置 sync sleep；Atomics.wait 在浏览器主线程外可用） */
+function sleepSync(ms: number): void {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    // 环境不支持 SharedArrayBuffer 时退化：放弃等待（交互体验略差但不阻断）
+  }
+}
+
+/** 同步读一行 stdin（TTY 交互用；非 TTY 读不到输入返回空串）；clarify --decide 判断题通道共用
+ * node 会把 TTY stdin 置为非阻塞：无待读数据时 readSync 抛 EAGAIN（不阻塞）——
+ * 捕获后短暂让出重试，直到用户输入到达或读到 EOF，否则交互提示会闪退 */
+export function readLineSync(prompt: string): string {
   process.stdout.write(prompt);
   const buf = Buffer.alloc(1);
   let line = '';
@@ -28,7 +39,12 @@ function readLineSync(prompt: string): string {
     let n = 0;
     try {
       n = readSync(0, buf, 0, 1, null);
-    } catch {
+    } catch (e: unknown) {
+      const code = (e as NodeJS.ErrnoException)?.code;
+      if (code === 'EAGAIN' || code === 'EWOULDBLOCK') {
+        sleepSync(20);
+        continue;
+      }
       break;
     }
     if (n === 0) break;

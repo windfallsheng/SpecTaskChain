@@ -44,9 +44,9 @@ taskq new "写三篇数据迁移文档，覆盖用户、订单、支付模块" -
 taskq clarify --task task-xiesanpianwendang
 ```
 
-体检报告分三级：⛔ 阻塞（缺三必填、依赖悬空、产出冲突）/ ⚠️ 建议（模糊词、指代不明、验收只有软门禁）/ ⏳ 待定（draft 标记）。
+体检报告分四级：⛔ 阻塞（缺三必填、依赖悬空、产出冲突）/ ⚠️ 建议（模糊词、指代不明、验收只有软门禁）/ ⏳ 待定（draft 标记）/ 🤖 可执行性风险（超出 AI 能力圈：方案带评分，✅ 推荐置顶）。
 
-处理权全在你：补（改规格）/ 给默认值（不吭声按默认走）/ 标记 draft（执行前再补）/ 无视（自己的队列自己负责）。详见 [clarify.md](clarify.md)。
+处理权全在你：补（改规格）/ 给默认值（不吭声按默认走）/ 标记 draft（执行前再补）/ 无视（自己的队列自己负责）；可执行性风险走判断题：`taskq clarify --task <id> --decide`（y 采纳 / n 换方案 / s 跳过）。详见 [clarify.md](clarify.md)。
 
 ## 第四步：run —— 无人值守接力
 
@@ -95,6 +95,7 @@ taskq run  →  AI 执行 prompt  →  taskq done  →  taskq run  →  ...
 
 ## 下一步
 
+- 场景怎么走：[scenarios.md](scenarios.md)（七个典型场景的完整过程：手动把关 vs 自动推进两条路线、无人值守接力、pipeline 双模式对照）
 - 规格怎么写：[spec-format.md](spec-format.md)
 - 队列怎么组织：[queue-structure.md](queue-structure.md)
 - 验收怎么设计：[acceptance.md](acceptance.md)

@@ -1,15 +1,17 @@
 // taskq done：验收登记——机器跑产物/断言门禁，宿主 AI 传评审结论
 // 验收三态：产物门禁（文件存在非空）+ 断言门禁（shell 退出码）+ 评审门禁（AI 审查）
-import { TaskQConfig, readState } from '../core/config';
+import { TaskQConfig, readState, writeLastUsedBatch } from '../core/config';
 import { scanQueue } from '../core/queue';
 import { runAcceptance, renderAcceptanceResult } from '../core/acceptance';
 import { markTaskState } from '../core/runner';
 import { locateBatchConfig } from '../core/batch-config';
+import { relative, sep } from 'path';
 import { generateQueueReport } from '../core/report';
 
 export interface DoneOptions {
   taskId: string;
   verdict?: string; // 评审结论（pass / fail + 描述）
+  spent?: number;   // 实际工时（小时；登记进 state，报告算预估 vs 实际偏差）
 }
 
 export function doneCommand(cfg: TaskQConfig, opts: DoneOptions): string {
@@ -23,8 +25,10 @@ export function doneCommand(cfg: TaskQConfig, opts: DoneOptions): string {
   const result = runAcceptance(task.acceptance, cfg.projectRoot, opts.verdict);
   const rendered = renderAcceptanceResult(result);
   if (result.passed) {
-    markTaskState(cfg, task.id, 'done', opts.verdict || 'pass');
-    return `${rendered}\n\n✅ 「${task.id}」已登记完成。继续接力：taskq run`;
+    markTaskState(cfg, task.id, 'done', opts.verdict || 'pass', opts.spent);
+    // 最近使用批次记忆：验收通过即认领（task.dir 相对队列目录的第一段 = 批次 ID；模块子任务目录上溯同样命中）
+    writeLastUsedBatch(cfg, relative(cfg.queueDir, task.dir).split(sep)[0]);
+    return `${rendered}\n\n✅ 「${task.id}」已登记完成${opts.spent !== undefined ? `（实际工时 ${opts.spent}h）` : ''}。继续接力：taskq run`;
   }
   const state = readState(cfg);
   const prev = state[task.id];

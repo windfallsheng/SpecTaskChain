@@ -4,6 +4,7 @@ import { readdirSync, existsSync, statSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TaskSpec, readSpec, parseFrontmatter } from './task-spec';
 import { resolveTaskType } from './task-type';
+import { TaskQConfig, readLastUsedBatch } from './config';
 
 export interface ModuleInfo {
   id: string;               // 模块 ID
@@ -50,18 +51,25 @@ export function latestBatchId(batches: BatchInfo[]): string | null {
   return [...batches].sort((a, b) => batchKey(a.id) - batchKey(b.id))[batches.length - 1].id;
 }
 
+/** 默认批次解析：最近使用批次（state.json lastUsedBatch，须批次仍存在）> 最新批次 */
+export function resolveDefaultBatch(cfg: TaskQConfig, batches: BatchInfo[]): string | null {
+  const lastUsed = readLastUsedBatch(cfg);
+  if (lastUsed && batches.some((b) => b.id === lastUsed)) return lastUsed;
+  return latestBatchId(batches);
+}
+
 /**
  * 批次视图：batchId 指定 → 只取该批次（不存在返回 null，由调用方报错）；
- * 缺省 → 最新批次（新批次插队先跑，老批次 --batch 手动指定）；'all' → 全批次平铺
+ * 缺省 → defaultBatch（调用方传最近使用批次）> 最新批次；'all' → 全批次平铺
  * 返回体 tasks/modules 只含选中批次；batches 保留全量批次目录（供展示）
  */
-export function selectBatch(queue: QueueScan, batchId?: string): QueueScan | null {
+export function selectBatch(queue: QueueScan, batchId?: string, defaultBatch?: string | null): QueueScan | null {
   if (batchId && batchId !== 'all') {
     const b = queue.batches.find((x) => x.id === batchId);
     return b ? { tasks: b.tasks, modules: b.modules, batches: queue.batches } : null;
   }
   if (!batchId) {
-    const latest = latestBatchId(queue.batches);
+    const latest = defaultBatch || latestBatchId(queue.batches);
     const b = queue.batches.find((x) => x.id === latest);
     return b ? { tasks: b.tasks, modules: b.modules, batches: queue.batches } : { tasks: [], modules: [], batches: [] };
   }

@@ -28,9 +28,11 @@ export interface TaskSpec {
   priority?: string;      // 优先级（P0/P1/P2 或自由值；筛选与展示）
   tags?: string[];        // 标签（自由关键词；跨批次按主题筛选）
   estimate?: number;      // 预估工时（小时；report/status 汇总）
+  due?: string;           // 截止日期（YYYY-MM-DD；逾期标记与计划感的锚）
   role?: string;           // 执行角色（内置或 .taskchain/ROLES/{role}.md；type 管形态，role 管专业）
   reports?: boolean;       // 是否参与评估报告（false = 本任务退出澄清/完成评估报告；缺省参与）
   overwrite?: boolean;     // 是否允许澄清处方（taskq fix）覆盖写回本 SPEC.md（false = 只提示不落盘；缺省允许，覆盖前原文件归档到 sources/）
+  decisions?: string[];    // 可执行性风险已决记录（每项「风险标签→方案名」）；体检跳过已决信号，taskq clarify --decide 采纳后写回
   body: string;           // 正文全文（自由表达，执行时全文注入）
 }
 
@@ -199,11 +201,13 @@ export function buildSpec(id: string, dir: string, data: Record<string, any>, bo
         ? String(data.tags).split(/[,，]/).map((s) => s.trim()).filter(Boolean)
         : undefined,
     estimate: data.estimate !== undefined && data.estimate !== '' && !isNaN(Number(data.estimate)) ? Number(data.estimate) : undefined,
+    due: data.due ? String(data.due) : undefined,
     role: data.role ? String(data.role) : undefined,
     // 只有显式 false 才退出报告；缺省/true 都=参与（undefined 不写回，保持 SPEC.md 干净）
     reports: data.reports === false || data.reports === 'false' ? false : undefined,
     // 只有显式 false 才拒绝覆盖；缺省/true 都=允许（undefined 不写回）
     overwrite: data.overwrite === false || data.overwrite === 'false' ? false : undefined,
+    decisions: Array.isArray(data.decisions) ? data.decisions.map(String) : undefined,
     body,
   };
 }
@@ -236,10 +240,46 @@ function foldScalar(s: string): string {
   return s.replace(/\s*\n+\s*/g, ' ').trim();
 }
 
+/** 截止日期解析：YYYY-MM-DD 直通；「今天/明天/后天/周X/本周X/下周X」口语转日期；解析不了返回 null（原样存） */
+export function parseDue(raw: string): string | null {
+  const s = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const fmt = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const today = new Date();
+  if (s === '今天') return fmt(today);
+  if (s === '明天') return fmt(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1));
+  if (s === '后天') return fmt(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2));
+  if (s === '昨天') return fmt(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1));
+  if (s === '前天') return fmt(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2));
+  const CN: Record<string, number> = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 7, '天': 7 };
+  const m = s.match(/^(下|本)?周([一二三四五六日天])$/);
+  if (m) {
+    const target = CN[m[2]];
+    const todayDow = today.getDay() === 0 ? 7 : today.getDay();
+    let delta = target - todayDow + (m[1] === '下' ? 7 : 0);
+    if (delta < 0) delta += 7; // 本周X已过 → 顺延（「周X」裸词同理取最近一个）
+    return fmt(new Date(today.getFullYear(), today.getMonth(), today.getDate() + delta));
+  }
+  return null;
+}
+
+/** 逾期天数：due 距今天差几天（正 = 已逾期 N 天，负 = 还剩 -N 天；无 due 或格式非法返回 null） */
+export function daysOverdue(due: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return null;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return Math.round((Date.parse(`${today}T00:00:00`) - Date.parse(`${due}T00:00:00`)) / 86400000); // due 在过去 = 已逾期（正数）
+}
+
 /** 生成 SPEC.md 文件内容（frontmatter + 正文） */
 export function renderSpec(spec: {
   type?: string; goal: string; output: string; acceptance: AcceptanceSpec; dependsOn?: string[]; draft?: boolean; body?: string; name?: string;
-  createdAt?: string; priority?: string; tags?: string[]; estimate?: number; role?: string; reports?: boolean; overwrite?: boolean;
+  createdAt?: string; priority?: string; tags?: string[]; estimate?: number; due?: string; role?: string; reports?: boolean; overwrite?: boolean; decisions?: string[];
 }): string {
   const lines: string[] = ['---'];
   lines.push(`type: ${spec.type || 'general'}`);
@@ -253,9 +293,14 @@ export function renderSpec(spec: {
     spec.tags.forEach((t) => lines.push(`  - ${t}`));
   }
   if (spec.estimate !== undefined) lines.push(`estimate: ${spec.estimate}`);
+  if (spec.due) lines.push(`due: ${spec.due}`);
   if (spec.role) lines.push(`role: ${spec.role}`);
   if (spec.reports === false) lines.push('reports: false');
   if (spec.overwrite === false) lines.push('overwrite: false');
+  if (spec.decisions && spec.decisions.length) {
+    lines.push('decisions:');
+    spec.decisions.forEach((d) => lines.push(`  - ${d}`));
+  }
   if (spec.dependsOn && spec.dependsOn.length) {
     lines.push('depends-on:');
     spec.dependsOn.forEach((d) => lines.push(`  - ${d}`));

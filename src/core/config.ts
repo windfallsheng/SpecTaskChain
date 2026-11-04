@@ -68,6 +68,36 @@ export function readState(cfg: TaskQConfig): Record<string, TaskRunState> {
   }
 }
 
+/** 读最近使用批次（state.json 顶层 lastUsedBatch；缺失/损坏返回 null） */
+export function readLastUsedBatch(cfg: TaskQConfig): string | null {
+  const statePath = join(cfg.metaDir, 'state.json');
+  if (!existsSync(statePath)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(statePath, 'utf-8'));
+    return typeof raw.lastUsedBatch === 'string' ? raw.lastUsedBatch : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 写最近使用批次（保留 tasks 原账，原子落盘；写操作每次落盘后调用） */
+export function writeLastUsedBatch(cfg: TaskQConfig, batchId: string): void {
+  const statePath = join(cfg.metaDir, 'state.json');
+  let raw: Record<string, unknown> = { version: 1, tasks: {} };
+  if (existsSync(statePath)) {
+    try {
+      raw = JSON.parse(readFileSync(statePath, 'utf-8'));
+    } catch {
+      raw = { version: 1, tasks: {} };
+    }
+  }
+  raw.lastUsedBatch = batchId;
+  mkdirSync(cfg.metaDir, { recursive: true });
+  const tmpPath = `${statePath}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(raw, null, 2), 'utf-8');
+  renameSync(tmpPath, statePath);
+}
+
 /** 写状态文件（原子落盘：临时文件 + rename 替换，写入中途崩溃不截断账本） */
 export function writeState(cfg: TaskQConfig, tasks: Record<string, TaskRunState>): void {
   const statePath = join(cfg.metaDir, 'state.json');
@@ -83,4 +113,5 @@ export interface TaskRunState {
   doneAt?: string;
   doingAt?: string; // doing 占位时间（超时视为孤儿任务，允许重拾）
   verdict?: string; // 验收结论（pass/fail/描述）
+  spent?: number;   // 实际工时（小时；done 验收时 --spent 登记，报告算预估 vs 实际）
 }

@@ -110,13 +110,25 @@ describe('detectExecRisks：AI 能力圈信号', () => {
     expect(issue.message).not.toContain('建议'); // 旧版单条建议已升级为 options 菜单
   });
 
-  it('终端渲染：exec 档每条风险下挂方案行（谁来做图标 + 方案名 + 怎么做）', () => {
+  it('终端渲染：✅ 推荐置顶（评分+理由），其余按分跟排（谁来做图标 + 方案名 + 怎么做）', () => {
     const issues = detectExecRisks(makeSpec('发布版本并扫码登录后台确认', ''));
     const report = renderClarifyReport(issues);
     expect(report).toContain('🤖 可执行性风险');
-    expect(report).toContain('· 🤝 补测试凭据'); // both
-    expect(report).toContain('· 🤖 换自动化通道'); // ai
+    expect(report).toContain('✅ 推荐');
+    expect(report).toContain('9/10');
+    expect(report).toContain('推荐理由');
+    expect(report).toContain('补测试凭据');
+    expect(report).toContain('换自动化通道');
     expect(report).toContain('API token');
     expect(report).toContain('方案菜单'); // 底部处理方式提示语
+    expect(report).toContain('--decide'); // 判断题通道提示
+    // 推荐行必须排在方案区首行（置顶语义），三个方案评分递减
+    const lines = report.split('\n');
+    const recLine = lines.findIndex((l) => l.includes('✅ 推荐'));
+    const firstOpt = lines.findIndex((l) => l.includes('/10'));
+    expect(recLine).toBeGreaterThan(0);
+    expect(recLine).toBe(firstOpt);
+    const scores = lines.filter((l) => l.includes('/10')).map((l) => Number(l.match(/(\d+)\/10/)![1]));
+    expect(scores).toEqual([9, 8, 7]);
   });
 });

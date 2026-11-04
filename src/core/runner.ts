@@ -3,11 +3,12 @@
 // prompt 四段增强：模块身份（共享 spec 每次重读）/ 引用消解（真实内容）/ 动作义务（动作必须执行）/ 执行留痕（断点续做）
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { TaskQConfig, readState, writeState, TaskRunState } from './config';
-import { scanQueue, buildExecutionSequence, filterExecutionSequence, findNextPending, selectBatch, latestBatchId, DOING_TIMEOUT_MS, ExecutableTask, BatchInfo } from './queue';
+import { TaskQConfig, readState, writeState, writeLastUsedBatch, readLastUsedBatch, TaskRunState } from './config';
+import { scanQueue, buildExecutionSequence, filterExecutionSequence, findNextPending, selectBatch, latestBatchId, resolveDefaultBatch, DOING_TIMEOUT_MS, ExecutableTask, BatchInfo } from './queue';
 import { readBatchConfig, SYSTEM_BATCH_DEFAULTS, BatchConfig } from './batch-config';
 import { buildDoneAssessment, dispatchAssessment, assessmentNotice, resolveReportSwitch } from './assessment';
 import { resolveTaskType } from './task-type';
+import { daysOverdue } from './task-spec';
 import { resolveReferences } from './references';
 import { renderEffectiveRoleSegment, resolveEffectiveRole } from './task-role';
 
@@ -175,8 +176,9 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
 export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?: string; task?: string; module?: string; noReport?: boolean; forceReport?: boolean } = {}): NextTaskInfo {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   const batchCfg = effectiveBatchConfig(cfg, queue.batches, opts.batch);
-  // 批次聚焦：缺省 = 最新批次（新批次插队先跑）；--batch batch-NNN 指定老批次；--batch all 全批次
-  const view = selectBatch(queue, opts.batch);
+  // 批次聚焦：--batch 指定老批次；缺省 = 最近使用批次（写操作留下）> 最新批次；--batch all 全批次
+  const focusBatch = opts.batch && opts.batch !== 'all' ? opts.batch : resolveDefaultBatch(cfg, queue.batches);
+  const view = selectBatch(queue, opts.batch, focusBatch);
   if (!view) {
     return {
       task: null as any,
@@ -240,6 +242,8 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
     };
   }
   const prompt = buildTaskPrompt(next, cfg.metaDir, cfg.projectRoot);
+  // 领取即记最近使用批次：无参 run 下次自然回到这批（接力不跳批）
+  if (focusBatch) writeLastUsedBatch(cfg, focusBatch);
   // 占位 doing：防并发重复领取，status 面板与报告有真数据（doingAt 超时后自动重拾）
   markTaskState(cfg, next.spec.id, 'doing');
   return {
@@ -251,7 +255,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
 }
 
 /** 登记任务状态（done 命令写入；attempts = 失败次数，failed 时 +1） */
-export function markTaskState(cfg: TaskQConfig, taskId: string, status: 'doing' | 'done' | 'failed', verdict?: string): void {
+export function markTaskState(cfg: TaskQConfig, taskId: string, status: 'doing' | 'done' | 'failed', verdict?: string, spent?: number): void {
   const state = readState(cfg);
   const prev = state[taskId] || { status: 'todo', attempts: 0 };
   const now = new Date().toISOString();
@@ -261,6 +265,7 @@ export function markTaskState(cfg: TaskQConfig, taskId: string, status: 'doing' 
     doneAt: status === 'done' ? now : prev.doneAt,
     doingAt: status === 'doing' ? now : prev.doingAt,
     verdict: verdict || prev.verdict,
+    spent: spent !== undefined ? spent : prev.spent,
   };
   writeState(cfg, state);
 }
@@ -268,7 +273,7 @@ export function markTaskState(cfg: TaskQConfig, taskId: string, status: 'doing' 
 /** 队列进度摘要（status 命令）：批次聚焦同 relayNext，多批次时先亮批次行 */
 export function queueSummary(cfg: TaskQConfig, opts: { batch?: string } = {}): string {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
-  const view = selectBatch(queue, opts.batch) || queue;
+  const view = selectBatch(queue, opts.batch, resolveDefaultBatch(cfg, queue.batches)) || queue;
   const sequence = buildExecutionSequence(view);
   const state = readState(cfg);
   const done = sequence.filter((e) => state[e.spec.id]?.status === 'done').length;
@@ -277,8 +282,9 @@ export function queueSummary(cfg: TaskQConfig, opts: { batch?: string } = {}): s
   const todo = sequence.length - done - failed - doing;
   const lines: string[] = [];
   if (queue.batches.length > 1 || opts.batch) {
-    const focus = opts.batch === 'all' ? '全部批次' : opts.batch || latestBatchId(queue.batches);
-    lines.push(`批次：${queue.batches.map((b) => b.id).join('、')}（当前聚焦 ${focus}）`);
+    const focus = opts.batch === 'all' ? '全部批次' : opts.batch || resolveDefaultBatch(cfg, queue.batches);
+    const lastUsedMark = !opts.batch && readLastUsedBatch(cfg) === focus && focus !== latestBatchId(queue.batches) ? ' ← 最近使用' : '';
+    lines.push(`批次：${queue.batches.map((b) => b.id).join('、')}（当前聚焦 ${focus}${lastUsedMark}）`);
   }
   lines.push(`队列总览：共 ${sequence.length} 个任务`);
   lines.push(`  ✅ done: ${done}   ⛔ failed: ${failed}   ▶ doing: ${doing}   ⏳ todo: ${todo}`);
@@ -287,6 +293,12 @@ export function queueSummary(cfg: TaskQConfig, opts: { batch?: string } = {}): s
   }
   const next = findNextPending(sequence, state);
   lines.push(next ? `下一个接力任务：「${next.spec.id}」` : '队列已清空或全部完成');
+  const overdueCount = sequence.filter((e) => {
+    if (!e.spec.due || ['done', 'failed'].includes(state[e.spec.id]?.status || '')) return false;
+    const days = daysOverdue(e.spec.due);
+    return days !== null && days > 0;
+  }).length;
+  if (overdueCount) lines.push(`⏰ 逾期：${overdueCount} 个任务已过截止（taskq list 看 🔴红标）`);
   return lines.join('\n');
 }
 
@@ -300,7 +312,7 @@ export function queueSummary(cfg: TaskQConfig, opts: { batch?: string } = {}): s
  * 'all' 跨批次或队列无批次目录时回落系统默认（跨批次混跑没有单一「脾气」）
  */
 function effectiveBatchConfig(cfg: TaskQConfig, batches: BatchInfo[], batch?: string): BatchConfig {
-  const batchId = batch && batch !== 'all' ? batch : latestBatchId(batches);
+  const batchId = batch && batch !== 'all' ? batch : resolveDefaultBatch(cfg, batches);
   if (!batchId) return { ...SYSTEM_BATCH_DEFAULTS };
   return readBatchConfig(join(cfg.queueDir, batchId));
 }
@@ -319,7 +331,7 @@ function doneReportNotice(cfg: TaskQConfig, sequence: ExecutableTask[], state: R
     return st?.status === 'done' || st?.status === 'failed';
   });
   if (!hasExecuted) return '';
-  const batchId = batch && batch !== 'all' ? batch : latestBatchId(batches) || 'tasks';
+  const batchId = batch && batch !== 'all' ? batch : resolveDefaultBatch(cfg, batches) || 'tasks';
   const batchCfg = readBatchConfig(join(cfg.queueDir, batchId));
   const sw = resolveReportSwitch(batchCfg, reportOpts);
   if (!sw.enabled) return `\n📄 完成评估报告已跳过：${sw.reason}`;
@@ -340,7 +352,8 @@ export interface BatchRelayResult {
 export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?: number; skipDraft?: boolean; task?: string; module?: string; noReport?: boolean; forceReport?: boolean } = {}): BatchRelayResult {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   const batchCfg = effectiveBatchConfig(cfg, queue.batches, opts.batch);
-  const view = selectBatch(queue, opts.batch);
+  const focusBatch = opts.batch && opts.batch !== 'all' ? opts.batch : resolveDefaultBatch(cfg, queue.batches);
+  const view = selectBatch(queue, opts.batch, focusBatch);
   if (!view) {
     return {
       tasks: [],
@@ -349,6 +362,8 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
       summary: `❌ 批次「${opts.batch}」不存在。现有批次：${queue.batches.map((b) => b.id).join('、') || '无（队列为空）'}`,
     };
   }
+  // 领取即记最近使用批次：无参 execute 下次自然回到这批
+  if (focusBatch) writeLastUsedBatch(cfg, focusBatch);
   let sequence = buildExecutionSequence(view);
   if (opts.task || opts.module) {
     sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module });

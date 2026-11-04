@@ -5,6 +5,7 @@ import { join, dirname } from 'path';
 import { TaskQConfig, readState } from './config';
 import { scanQueue, buildExecutionSequence } from './queue';
 import { verdictPassed } from './acceptance';
+import { daysOverdue } from './task-spec';
 
 /** 报告筛选范围：--batch 聚焦批次 / --status 状态 / --type 类型（AND 组合） */
 export interface ReportOptions {
@@ -34,6 +35,10 @@ interface ReportData {
   retries: Array<{ id: string; attempts: number }>;
   estimated: Array<{ id: string; est: number }>;
   prioCount: Record<string, number>;
+  spentSum: number;
+  spentCount: number;
+  deviations: Array<{ id: string; est: number; spent: number; diff: number }>;
+  overdue: Array<{ id: string; due: string; days: number }>;
 }
 
 /** 收集报告数据：批次聚焦 + 状态/类型筛选 + 统计汇总；批次不存在时返回错误文案 */
@@ -69,6 +74,22 @@ function collectReport(cfg: TaskQConfig, opts: ReportOptions = {}): ReportData |
   for (const e of sequence) {
     if (e.spec.priority) prioCount[e.spec.priority] = (prioCount[e.spec.priority] || 0) + 1;
   }
+  // 实际工时与偏差（done 且登记过 spent 才有账可算；diff 正 = 超支，负 = 省时）
+  const spentTasks = done.filter((e) => state[e.spec.id]?.spent !== undefined);
+  const spentSum = Math.round(spentTasks.reduce((a, e) => a + (state[e.spec.id].spent as number), 0) * 10) / 10;
+  const deviations = spentTasks
+    .filter((e) => e.spec.estimate !== undefined)
+    .map((e) => {
+      const est = e.spec.estimate as number;
+      const spent = state[e.spec.id].spent as number;
+      return { id: e.spec.id, est, spent, diff: Math.round((spent - est) * 10) / 10 };
+    });
+  const overdue: Array<{ id: string; due: string; days: number }> = [];
+  for (const e of sequence) {
+    if (!e.spec.due || ['done', 'failed'].includes(state[e.spec.id]?.status || '')) continue;
+    const days = daysOverdue(e.spec.due);
+    if (days !== null && days > 0) overdue.push({ id: e.spec.id, due: e.spec.due, days });
+  }
   return {
     sequence,
     state,
@@ -81,13 +102,17 @@ function collectReport(cfg: TaskQConfig, opts: ReportOptions = {}): ReportData |
     retries,
     estimated,
     prioCount,
+    spentSum,
+    spentCount: spentTasks.length,
+    deviations,
+    overdue,
   };
 }
 
 export function generateQueueReport(cfg: TaskQConfig, opts: ReportOptions = {}): string {
   const collected = collectReport(cfg, opts);
   if ('error' in collected) return collected.error;
-  const { sequence, state, done, failed, pending, passRate, now, cond, retries, estimated, prioCount } = collected;
+  const { sequence, state, done, failed, pending, passRate, now, cond, retries, estimated, prioCount, spentSum, spentCount, deviations, overdue } = collected;
   const lines: string[] = [];
   lines.push(`# 队列执行报告`);
   lines.push('');
@@ -132,9 +157,24 @@ export function generateQueueReport(cfg: TaskQConfig, opts: ReportOptions = {}):
     if (estimated.length) {
       lines.push(`- 预估总工时：${estimated.reduce((a, e) => a + e.est, 0)} 小时（${estimated.length} 个已估任务）`);
     }
+    if (spentCount) {
+      const net = Math.round(deviations.reduce((a, d) => a + d.diff, 0) * 10) / 10;
+      const over = deviations.filter((d) => d.diff > 0).length;
+      const under = deviations.filter((d) => d.diff < 0).length;
+      lines.push(`- 实际总工时：${spentSum} 小时（${spentCount} 个已登记）`);
+      lines.push(`- 预估 vs 实际：${net > 0 ? `+${net}h` : `${net}h`}（超支 ${over} / 省时 ${under} / 持平 ${deviations.length - over - under}）`);
+      const drift = deviations.filter((d) => d.diff !== 0);
+      if (drift.length) lines.push(`- 偏差明细：${drift.map((d) => `${d.id} ${d.diff > 0 ? `+${d.diff}h` : `${d.diff}h`}`).join(' / ')}（估 → 实）`);
+    }
     if (Object.keys(prioCount).length) {
       lines.push(`- 优先级分布：${Object.entries(prioCount).map(([k, v]) => `${k} ×${v}`).join(' / ')}`);
     }
+    lines.push('');
+  }
+  if (overdue.length) {
+    lines.push('## 逾期任务（到期未完成）');
+    lines.push('');
+    overdue.forEach((o) => lines.push(`- ${o.id}：截止 ${o.due}（已过 ${o.days} 天）`));
     lines.push('');
   }
   const report = lines.join('\n');
@@ -149,7 +189,7 @@ export function generateQueueReport(cfg: TaskQConfig, opts: ReportOptions = {}):
 export function generateReportHtml(cfg: TaskQConfig, opts: ReportOptions = {}): string {
   const collected = collectReport(cfg, opts);
   if ('error' in collected) return collected.error;
-  const { sequence, state, done, failed, pending, passRate, cond, retries, estimated, prioCount } = collected;
+  const { sequence, state, done, failed, pending, passRate, cond, retries, estimated, prioCount, spentSum, spentCount, deviations, overdue } = collected;
   const total = sequence.length;
   const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
   const rows = sequence
@@ -158,18 +198,21 @@ export function generateReportHtml(cfg: TaskQConfig, opts: ReportOptions = {}): 
       const status = s?.status || 'todo';
       const color = status === 'done' ? '#22c55e' : status === 'failed' ? '#ef4444' : status === 'doing' ? '#3b82f6' : '#94a3b8';
       const icon = status === 'done' ? '✅' : status === 'failed' ? '⛔' : status === 'doing' ? '▶' : '⏳';
-      return `<tr><td>${icon}</td><td>${esc(e.spec.id)}</td><td>${esc(e.spec.priority || '-')}</td><td style="color:${color};font-weight:600">${esc(status)}</td><td>${s?.attempts || 0}</td><td>${esc(s?.doneAt || '-')}</td><td>${esc(s?.verdict || '-')}</td></tr>`;
+      return `<tr><td>${icon}</td><td>${esc(e.spec.id)}</td><td>${esc(e.spec.priority || '-')}</td><td style="color:${color};font-weight:600">${esc(status)}</td><td>${s?.attempts || 0}</td><td>${esc(s?.doneAt || '-')}</td><td>${esc(s?.verdict || '-')}</td><td>${e.spec.estimate !== undefined ? e.spec.estimate : '-'} / ${s?.spent !== undefined ? s.spent : '-'}</td></tr>`;
     })
     .join('');
   const failedCards = failed
     .map((e) => `<div class="fail"><b>${esc(e.spec.id)}</b><p>${esc(state[e.spec.id].verdict || '未通过验收')}</p></div>`)
     .join('');
+  const overdueCards = overdue
+    .map((o) => `<div class="fail"><b>${esc(o.id)}</b><p>截止 ${esc(o.due)}（已过 ${o.days} 天）</p></div>`)
+    .join('');
   const retryBlocks = retries.map((r) => `<div class="retry">${esc(r.id)}（${r.attempts} 次）</div>`).join('');
   const statBlock =
-    estimated.length || Object.keys(prioCount).length
+    estimated.length || spentCount || Object.keys(prioCount).length
       ? `<h2>工时与优先级</h2><div class="zone"><p>${
           estimated.length ? `预估总工时：<b>${estimated.reduce((a, e) => a + e.est, 0)}</b> 小时（${estimated.length} 个已估任务）` : ''
-        }${Object.keys(prioCount).length ? `　优先级分布：${Object.entries(prioCount)
+        }${spentCount ? `　实际总工时：<b>${spentSum}</b> 小时（${spentCount} 个已登记）` : ''}${Object.keys(prioCount).length ? `　优先级分布：${Object.entries(prioCount)
           .map(([k, v]) => `${esc(k)} ×${v}`)
           .join(' / ')}` : ''}</p></div>`
       : '';
@@ -211,10 +254,10 @@ footer{margin-top:32px;color:#94a3b8;font-size:12.5px}
 </div>
 <h2>执行记录</h2>
 <table>
-<thead><tr><th></th><th>任务</th><th>优先级</th><th>状态</th><th>尝试</th><th>完成时间</th><th>验收结论</th></tr></thead>
-<tbody>${rows || '<tr><td colspan="7" style="color:#94a3b8">（无匹配任务）</td></tr>'}</tbody>
+<thead><tr><th></th><th>任务</th><th>优先级</th><th>状态</th><th>尝试</th><th>完成时间</th><th>验收结论</th><th>工时（估/实）</th></tr></thead>
+<tbody>${rows || '<tr><td colspan="8" style="color:#94a3b8">（无匹配任务）</td></tr>'}</tbody>
 </table>
-${failed.length ? `<h2>失败任务（需人工介入）</h2>${failedCards}` : ''}
+${failed.length ? `<h2>失败任务（需人工介入）</h2>${failedCards}` : ''}\n${overdue.length ? `<h2>逾期任务（到期未完成）</h2>${overdueCards}` : ''}
 ${retries.length ? `<h2>重试记录</h2>${retryBlocks}` : ''}
 ${statBlock}
 <footer>SpecTaskChain · 完整账本见 QUEUE_REPORT.md（taskq report）</footer>
