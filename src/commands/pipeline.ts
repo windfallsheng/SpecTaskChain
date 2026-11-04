@@ -85,7 +85,7 @@ export function pipelineCommand(cfg: TaskQConfig, input: string, opts: PipelineO
   lines.push('## 阶段 2：澄清（用户亲自点头）');
   lines.push('');
   lines.push(`- 运行 taskq clarify --chain 链级体检，再对每个任务逐个补全：三必填齐了没、验收三态（产物/断言/评审）由用户亲自点头写`);
-  lines.push('- 补全后再次 taskq clarify 全量体检，直到全绿（无 blocking）');
+  lines.push('- 补全后再次 taskq clarify 全量体检，直到全绿（无 blocking）；机械项（补 output/acceptance 骨架/role/摘 draft）可 taskq fix --yes 一键应用');
   lines.push('');
   lines.push('**拦停点 2**：clarify 非全绿不得进阶段 3——「怎么算做完」没定，无人值守就跑不起来。');
   lines.push('');

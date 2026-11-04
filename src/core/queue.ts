@@ -108,6 +108,8 @@ function scanTaskArea(areaDir: string, metaDir: string): { tasks: TaskSpec[]; mo
   for (const entry of entries) {
     const full = join(areaDir, entry);
     if (!statSync(full).isDirectory()) continue;
+    // 保留目录跳过：隐藏目录（.taskchain 等）+ overview（批次元信息：评估报告落盘地，不是模块）
+    if (entry.startsWith('.') || entry === 'overview') continue;
     if (isTaskDir(full)) {
       const spec = readSpec(full, 'general');
       if (spec) tasks.push(spec);

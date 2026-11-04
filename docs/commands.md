@@ -87,6 +87,25 @@ taskq clarify [--task 任务ID] [--file SPEC路径] [--chain] [--html]
 | `--html` | 体检报告可视化：queue/CLARIFY.html（三档红黄灰分组卡片） |
 | （无参数） | 全队列体检（翻车查）：链级硬伤 + 各任务三必填全量；结束后后台生成澄清评估报告（MD+HTML 落批次 overview/reports/，不阻断终端输出） |
 
+机械项（补 output/acceptance 骨架/role/摘 draft）不用手改：尾部提示里 `taskq fix --yes` 一处搞定。
+
+## taskq fix
+
+体检处方的执行者——只修 A 档机械项（改完必对），语义题一律不碰。
+
+```
+taskq fix [--task 任务ID] [--yes] [--dry-run]
+```
+
+| 参数 | 说明 |
+| :--- | :--- |
+| （无参数） | 全队体检后展示处方清单：TTY 下逐项确认 [y/N]（回车跳过）；非 TTY 只提示不等待 |
+| `--task <id>` | 只修单任务 |
+| `--yes` | 静默应用全部处方（非交互模式/宿主 AI 的授权开关） |
+| `--dry-run` | 只预览处方不落盘（改什么字段、改成什么值） |
+
+四条底线：只动 frontmatter 已知字段 / 正文一字不碰 / 改前备份 SPEC.md.bak / 幂等（已满足不重复改）。
+
 ## taskq run
 
 无人值守接力执行。输出第一个未完成任务的完整执行 prompt，**通过退出码与宿主 AI 对话**：

@@ -8,6 +8,7 @@ import { relayNext, batchRelay, renderBatchResult } from './core/runner';
 import { initCommand } from './commands/init';
 import { newCommand } from './commands/new';
 import { clarifyCommand } from './commands/clarify';
+import { fixCommand } from './commands/fix';
 import { renderRunResult, runCommand } from './commands/run';
 import { doneCommand } from './commands/done';
 import { resetCommand } from './commands/reset';
@@ -77,6 +78,10 @@ function main(): void {
       }
       case 'clarify':
         output = clarifyCommand(cfg, { taskId: flag('--task'), file: flag('--file'), chain: hasFlag('--chain'), html: hasFlag('--html') });
+        break;
+      case 'fix':
+        // 体检处方的执行者：A 档机械修（output/acceptance 骨架/role/摘 draft）；TTY 下逐项确认，非 TTY 只提示（--yes 授权应用）
+        output = fixCommand(cfg, { taskId: flag('--task'), dryRun: hasFlag('--dry-run'), yes: hasFlag('--yes') });
         break;
       case 'run': {
         // 退出码协议：0 队列清空 / 10 接力（宿主 AI 执行）/ 12 拦截（draft/模块缺共享 spec/doing 进行中/failed 需人工介入）——直接传播给宿主
