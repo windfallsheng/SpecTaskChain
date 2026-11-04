@@ -60,24 +60,25 @@ taskq ask "看下进度"                                 # 口语入口（识别
 | `taskq list [--batch 批次] [--status 状态] [--type 类型]` | 队列清单（按批次分组，三扇窗筛选） |
 | `taskq status [--panel] [--batch 批次\|all]` | 队列总览（--panel 生成 HTML 可视化面板） |
 | `taskq report [--batch 批次] [--status 状态] [--type 类型]` | 队列报告（执行留痕，有账可查） |
+| `taskq history [--batch 批次] [--limit N]` | 操作轨迹（时间线回放：新建/领取/验收/复位流水，有账可查） |
 | `taskq ask "自然语言"` | 口语入口（建任务/拆分/流水线/批量执行/澄清/跑队列/重跑/看进度/报告 + 复合意图编排：「澄清并执行」不再丢段） |
 
-完整参数与行为见 [docs/commands.md](docs/commands.md)。
+完整参数与行为见 [docs/commands.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/commands.md)。
 
 ## 文档导航
 
 | 文档 | 内容 |
 | :--- | :--- |
-| [docs/quick-start.md](docs/quick-start.md) | 快速上手：五步闭环 + 写规格三式 |
-| [docs/spec-format.md](docs/spec-format.md) | SPEC.md 规格格式：三必填、验收三态、完整示例 |
-| [docs/queue-structure.md](docs/queue-structure.md) | 队列组织：平铺任务 / 任务模块 / 依赖 / 类型系统 / 状态文件 |
-| [docs/directory-layout.md](docs/directory-layout.md) | 项目目录布局：队列本体 / 产出落位 / 用户自组织区（docs·data·research·materials 都是干什么的） |
-| [docs/acceptance.md](docs/acceptance.md) | 验收三态门禁详解 + 留痕即产物原则 |
-| [docs/relay-protocol.md](docs/relay-protocol.md) | AI 接力协议：退出码、prompt 块、跨工具续跑 |
-| [docs/clarify.md](docs/clarify.md) | 澄清体检：四入口、四级信号、处理四式 + 判断题裁决 |
-| [docs/scenarios.md](docs/scenarios.md) | 场景手册：七个典型场景的完整过程（手动把关 vs 自动推进两条路线对照，输出均取自真实运行） |
-| [docs/commands.md](docs/commands.md) | 命令参考大全 |
-| [docs/design.md](docs/design.md) | 设计决策、能力边界与路线图 |
+| [docs/quick-start.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/quick-start.md) | 快速上手：五步闭环 + 写规格三式 |
+| [docs/spec-format.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/spec-format.md) | SPEC.md 规格格式：三必填、验收三态、完整示例 |
+| [docs/queue-structure.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/queue-structure.md) | 队列组织：平铺任务 / 任务模块 / 依赖 / 类型系统 / 状态文件 |
+| [docs/directory-layout.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/directory-layout.md) | 项目目录布局：队列本体 / 产出落位 / 用户自组织区（docs·data·research·materials 都是干什么的） |
+| [docs/acceptance.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/acceptance.md) | 验收三态门禁详解 + 留痕即产物原则 |
+| [docs/relay-protocol.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/relay-protocol.md) | AI 接力协议：退出码、prompt 块、跨工具续跑 |
+| [docs/clarify.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/clarify.md) | 澄清体检：四入口、四级信号、处理四式 + 判断题裁决 |
+| [docs/scenarios.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/scenarios.md) | 场景手册：七个典型场景的完整过程（手动把关 vs 自动推进两条路线对照，输出均取自真实运行） |
+| [docs/commands.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/commands.md) | 命令参考大全 |
+| [docs/design.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/design.md) | 设计决策、能力边界与路线图 |
 
 ## 项目目录布局
 
@@ -86,7 +87,7 @@ taskq 不接管你的项目——它只管理 `queue/`。项目里其余目录�
 - **产出落位**：`docs/` `data/` `research/` `presentation/` `scripts/` `src/` `outputs/` ——按任务类型自动归位（`--type doc` 产出落 `docs/`、`--type research` 落 `research/`……），目录按需出现，映射可自定义。
 - **用户自组织区**：`materials/` `specs/` `logs/` 或任何你已有的目录——taskq 不认识也不碰，名字随你定；素材类文件放这里，`taskq split materials/x.md` 指过去即可。
 
-三类目录各司其职的完整说明见 [docs/directory-layout.md](docs/directory-layout.md)。
+三类目录各司其职的完整说明见 [docs/directory-layout.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/directory-layout.md)。
 
 > 📖 想一眼看懂这些？`taskq init` 后双击 `queue/GUIDE.html`——上手三步 + 三类目录 + 命令速查 + 常见问题都在里面（`taskq help guide --html` 随时再生成）。
 
@@ -121,7 +122,7 @@ queue/
 - `10`：有下一任务——执行 prompt 块内容 → `taskq done` 登记验收 → 再次 `taskq run`
 - `12`：拦截——四种情形：下一任务是 draft（先 clarify 补全或 `--skip-draft` 强跑）/ 模块缺共享 spec（先补 CONSTRAINTS.md）/ 有任务正在执行中（doing 占位，执行者完成后 done）/ 任务失败需人工介入（修复后重新 `taskq done` 验收）
 
-完整协议（含跨工具续跑、无人值守与人工介入的边界）见 [docs/relay-protocol.md](docs/relay-protocol.md)。
+完整协议（含跨工具续跑、无人值守与人工介入的边界）见 [docs/relay-protocol.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/relay-protocol.md)。
 
 ## 能力清单（v0.2.1）
 

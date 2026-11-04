@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TaskQConfig, writeLastUsedBatch } from '../core/config';
+import { appendOpLog } from '../core/oplog';
 import { renderSpec, parseDue } from '../core/task-spec';
 import { ensureBatchConfig } from '../core/batch-config';
 import { resolveTaskType, listBuiltinTypes } from '../core/task-type';
@@ -125,6 +126,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
       'utf-8'
     );
     writeLastUsedBatch(cfg, batchId); // 最近使用批次记忆：落盘即认领
+    appendOpLog(cfg, { cmd: 'new', target: subName, batch: batchId, note: `入模块 ${modName}` }); // 操作轨迹：建任务留痕
     const lines = [
       `✅ 子任务已入模块「${modName}」${groupShown ? `（${groupShown}）` : ''} → 批次 ${batchId}（任务模块 = 共享 spec 的院落）`,
       '',
@@ -168,6 +170,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
     'utf-8'
   );
   writeLastUsedBatch(cfg, batchId); // 最近使用批次记忆：落盘即认领
+  appendOpLog(cfg, { cmd: 'new', target: id, batch: batchId, note: opts.goal.slice(0, 40) }); // 操作轨迹：建任务留痕
   const lines = [
     `✅ 任务「${id}」${shownName ? `（${shownName}）` : ''}已入队 → 批次 ${batchId}（draft 态：等待规格补全，补全前 taskq run 会拦截）`,
     ...(id !== baseId ? [`  撞名拼短 hash 区分：${baseId} → ${id}（重名不打架，state 键各归各）`] : []),

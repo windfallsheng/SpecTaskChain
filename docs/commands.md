@@ -234,6 +234,31 @@ taskq report [--batch 批次] [--status 状态] [--type 类型] [--html]
 
 工时账：预估总工时 / 实际总工时（done 时 `--spent` 登记）/ 预估 vs 实际差值（超支+/省时-/持平）+ 偏差明细 / 逾期清单（`--due` 到期未完成，红标在 list）。
 
+## taskq history
+
+操作轨迹（队列写操作的时间线回放）：何时建了任务 / 领取 / 验收 / 复位，一条流水全记下。
+
+```
+taskq history [--batch 批次] [--limit N]
+```
+
+| 参数 | 说明 |
+| :--- | :--- |
+| `--batch batch-001` | 只看某批次（默认全部批次；跨批次操作如 `reset --all` 不匹配任何批次） |
+| `--limit N` | 显示最近 N 条（默认 30；`--limit 0` = 全量；超量时末尾提示总数） |
+
+只记写操作（new/run/execute/done/reset 五类自动留痕），只读命令（list/status/report）不记——流水不被刷屏淹没。数据落 `.taskchain/op-log.json`（JSONL 追加式，损坏行局部跳过）。
+
+与 report 分工：report 按任务聚合总账（这个任务的一生），history 按时间线回放流水（这个队列的一天）。
+
+```
+📜 操作轨迹（全部批次，最近 5 条，倒序）
+
+2026-11-04T08:30:12Z  验收  task-34-cshidaima  [batch-001] — 验收通过，实际工时 6h
+2026-11-04T07:35:15Z  领取  task-34-cshidaima  [batch-001] — 领取执行
+2026-11-04T07:30:02Z  新建  task-34-cshidaima  [batch-001] — 写客户端待迁移代码模块
+```
+
 ## taskq ask
 
 自然语言入口：意图识别 + 参数提取 + 精确执行。识别全部 CLI 命令（init/new/split/clarify/run/execute/pipeline/reset/done/list/status/report）。

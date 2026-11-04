@@ -1,9 +1,10 @@
 // taskq reset：重跑复位——状态回 todo + attempts 清零。软复位留痕保留（重跑=基于现有内容调整补充），
 // --hard 连 PROGRESS.md 留痕清空（重跑=从头再来）。产物文件两种模式都不删（成果由你定夺，重跑时按规格自然覆盖）
 import { TaskQConfig, readState, writeState } from '../core/config';
+import { appendOpLog } from '../core/oplog';
 import { scanQueue, selectBatch, QueueScan } from '../core/queue';
 import { existsSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { join, relative, sep } from 'path';
 
 export interface ResetOptions {
   hard?: boolean; // 连留痕 PROGRESS.md 一起清空
@@ -73,6 +74,9 @@ export function resetCommand(cfg: TaskQConfig, target: string, opts: ResetOption
     }
   }
   writeState(cfg, state);
+  // 操作轨迹：复位留痕（批次推断：--all 跨批次不记 / batch-NNN 直取 / 任务·模块取首任务目录第一段）
+  const opBatch = isAll ? undefined : /^batch-/i.test(target) ? target : relative(cfg.queueDir, targets[0].dir).split(sep)[0];
+  appendOpLog(cfg, { cmd: 'reset', target, batch: opBatch, note: opts.hard ? `--hard 清 ${cleared} 个留痕` : '软复位（留痕保留）' });
 
   const hardNote = opts.hard
     ? `（留痕 PROGRESS.md 已清 ${cleared} 个，重跑 = 从头再来）`

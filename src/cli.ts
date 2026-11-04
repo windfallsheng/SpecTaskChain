@@ -14,6 +14,7 @@ import { doneCommand } from './commands/done';
 import { resetCommand } from './commands/reset';
 import { statusCommand } from './commands/status';
 import { reportCommand } from './commands/report';
+import { historyCommand } from './commands/history';
 import { listCommand } from './commands/list';
 import { askCommand } from './commands/ask';
 import { splitCommand } from './commands/split';
@@ -169,6 +170,13 @@ function main(): void {
       case 'report':
         output = reportCommand(cfg, { batch: flag('--batch'), status: flag('--status'), type: flag('--type'), html: hasFlag('--html') });
         break;
+      case 'history': {
+        // 操作轨迹：时间线回放（默认最近 30 条；--limit 0 = 全量；--batch 过滤批次）
+        const limitRaw = flag('--limit');
+        const limit = limitRaw !== undefined && !isNaN(Number(limitRaw)) ? Number(limitRaw) : 30;
+        output = historyCommand(cfg, { batch: flag('--batch'), limit: limit || undefined });
+        break;
+      }
       case 'ask': {
         const input = rest.join(' ');
         if (input) {

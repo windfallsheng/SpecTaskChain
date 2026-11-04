@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { TaskQConfig, readState, writeState, writeLastUsedBatch, readLastUsedBatch, TaskRunState } from './config';
+import { appendOpLog } from './oplog';
 import { scanQueue, buildExecutionSequence, filterExecutionSequence, findNextPending, selectBatch, latestBatchId, resolveDefaultBatch, DOING_TIMEOUT_MS, ExecutableTask, BatchInfo } from './queue';
 import { readBatchConfig, SYSTEM_BATCH_DEFAULTS, BatchConfig } from './batch-config';
 import { buildDoneAssessment, dispatchAssessment, assessmentNotice, resolveReportSwitch } from './assessment';
@@ -246,6 +247,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
   if (focusBatch) writeLastUsedBatch(cfg, focusBatch);
   // 占位 doing：防并发重复领取，status 面板与报告有真数据（doingAt 超时后自动重拾）
   markTaskState(cfg, next.spec.id, 'doing');
+  appendOpLog(cfg, { cmd: 'run', target: next.spec.id, batch: focusBatch || undefined, note: '领取执行' });
   return {
     task: next,
     prompt,
@@ -419,6 +421,7 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
   // 批内全部占位 doing：串行执行整批，done 逐个销账（中断 24 小时后自动重拾）
   taken.forEach((t) => markTaskState(cfg, t.spec.id, 'doing'));
   const ids = taken.map((t) => t.spec.id).join('、');
+  appendOpLog(cfg, { cmd: 'execute', target: `${taken.length} 个任务`, batch: focusBatch || undefined, note: ids });
   const lines: string[] = [
     `📦 批次接力：一次领取 ${taken.length} 个任务（${ids}）`,
     `按顺序执行：每个完成即 \`taskq done <id> --verdict "..."\`；批内全部完成后再次 \`taskq execute\` 取下一批，直到退出码 0`,
