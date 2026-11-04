@@ -7,6 +7,10 @@ import { TaskSpec, validateRequired } from './task-spec';
 import { extractReferences } from './references';
 import { isPlaceholderSlug, hasNonAscii, slugFromDir } from './task-naming';
 import { resolveTaskRole, listBuiltinRoles, resolveEffectiveRole } from './task-role';
+import { builtinTemplatePlaceholders } from './task-template';
+
+/** 内置模板占位符行集合（骨架未填实检测的单一事实来源，模块加载时取一次） */
+const BUILTIN_PLACEHOLDERS = builtinTemplatePlaceholders();
 
 /** 从任务目录上溯找 .taskchain（metaDir）：任务在 queue/{批次}/{任务}/ 或 queue/{批次}/{模块}/{子任务}/ 下 */
 function findMetaDir(taskDir: string): string {
@@ -184,6 +188,22 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyI
   }
   if (hasNonAscii(spec.id)) {
     issues.push({ level: 'suggest', taskId: spec.id, message: '目录名含非 ASCII 字符——建议 ASCII slug 作目录名，中文显示名写 frontmatter name 字段' });
+  }
+  // —— 正文澄清度：goal 是任务灵魂，正文是灵魂的展开——空白/复制/骨架未填实都拦 ——
+  const bodyNorm = spec.body.replace(/\s+/g, '');
+  const goalNorm = spec.goal.replace(/\s+/g, '');
+  if (!bodyNorm) {
+    issues.push({ level: 'suggest', taskId: spec.id, message: '正文空白——只有 goal 一行，背景/边界/输出格式全靠 AI 脑补；建议补上执行上下文' });
+  } else if (bodyNorm === goalNorm) {
+    issues.push({ level: 'suggest', taskId: spec.id, message: '正文未澄清——正文只是 goal 的复制品，没有实质澄清内容（背景、约束、边界）；建议补实执行要点' });
+  } else {
+    const placeholder = spec.body
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => BUILTIN_PLACEHOLDERS.has(l));
+    if (placeholder) {
+      issues.push({ level: 'suggest', taskId: spec.id, message: `正文残留模板占位符「${placeholder}」——骨架未填实；建议替换为实质内容` });
+    }
   }
   // —— 语义信号 ——
   const text = `${spec.goal}\n${spec.body}`;

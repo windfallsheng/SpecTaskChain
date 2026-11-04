@@ -60,7 +60,7 @@ ${moduleBlocks ? `<h2>任务模块</h2>${moduleBlocks}` : ''}
 </body>
 </html>`;
   // 未 init 也兜底：自动补目录，不裸奔
-  const panelPath = join(cfg.queueDir, 'PANEL.html');
+  const panelPath = join(cfg.queueDir, 'reports', 'PANEL.html');
   mkdirSync(dirname(panelPath), { recursive: true });
   writeFileSync(panelPath, html, 'utf-8');
   return panelPath;

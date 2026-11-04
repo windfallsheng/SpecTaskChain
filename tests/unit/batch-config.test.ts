@@ -210,15 +210,53 @@ describe('done 验收上限：max-attempts 配置生效', () => {
     expect(state.tasks['01-a'].status).toBe('failed');
   });
 
-  it('max-attempts: 5 → 第一次失败不标记 failed（提示 1/5）', () => {
+  it('max-attempts: 5 → 第一次失败回 todo 可重试（attempts=1，verdict 不污染）', () => {
     const cfg = makeCfg();
     makeTask(cfg, '01-a');
     writeFileSync(join(cfg.queueDir, 'batch-001', BATCH_CONFIG_FILE), 'max-attempts: 5\n', 'utf-8');
-    const out = doneCommand(cfg, { taskId: '01-a', verdict: 'fail 不合格' });
+    const out = doneCommand(cfg, { taskId: '01-a', verdict: 'pass 看起来不错' });
     expect(out).toContain('第 1/5 次尝试');
     const state = JSON.parse(readFileSync(join(cfg.metaDir, 'state.json'), 'utf-8'));
-    expect(state.tasks['01-a'].status).toBe('failed'); // 未达上限，状态仍为 failed（可重试）但 attempts=1
+    // failed 只属于达上限：未达上限回 todo，接力能再次领取
+    expect(state.tasks['01-a'].status).toBe('todo');
     expect(state.tasks['01-a'].attempts).toBe(1);
+    expect(state.tasks['01-a'].verdict).toBeUndefined(); // AI 评审文本不写进失败状态（机器判定优先）
+  });
+
+  it('max-attempts: 2 → 第 2 次失败才标记 failed', () => {
+    const cfg = makeCfg();
+    makeTask(cfg, '01-a');
+    writeFileSync(join(cfg.queueDir, 'batch-001', BATCH_CONFIG_FILE), 'max-attempts: 2\n', 'utf-8');
+    doneCommand(cfg, { taskId: '01-a', verdict: 'fail' }); // 第 1 次：回 todo
+    const out = doneCommand(cfg, { taskId: '01-a', verdict: 'fail' }); // 第 2 次：达上限
+    expect(out).toContain('已达尝试上限（2 次）');
+    const state = JSON.parse(readFileSync(join(cfg.metaDir, 'state.json'), 'utf-8'));
+    expect(state.tasks['01-a'].status).toBe('failed');
+    expect(state.tasks['01-a'].attempts).toBe(2);
+    // 达上限后接力拦停（exit 12）且提示准确
+    const r = relayNext(cfg, {});
+    expect(r.exitCode).toBe(12);
+    expect(r.summary).toContain('达尝试上限 2 次');
+  });
+
+  it('draft 任务 done 拦截：先补全规格再验收（门禁不空跑）', () => {
+    const cfg = makeCfg();
+    makeTask(cfg, '01-a', { draft: true });
+    const out = doneCommand(cfg, { taskId: '01-a', verdict: 'pass' });
+    expect(out).toContain('draft 态');
+    expect(out).toContain('clarify');
+    // 拦截发生在写 state 之前：state.json 未创建或其中无该任务
+    const statePath = join(cfg.metaDir, 'state.json');
+    expect(!existsSync(statePath) || !JSON.parse(readFileSync(statePath, 'utf-8')).tasks['01-a']).toBe(true);
+  });
+
+  it('未达上限回 todo 后，接力能再次领取同一任务', () => {
+    const cfg = makeCfg();
+    makeTask(cfg, '01-a');
+    doneCommand(cfg, { taskId: '01-a', verdict: 'fail' }); // 失败回 todo
+    const r = relayNext(cfg, {});
+    expect(r.exitCode).toBe(10); // 未被 failed 拦停，可再次接力
+    expect(r.task.spec.id).toBe('01-a');
   });
 
   it('无配置 → 系统默认 3 次', () => {

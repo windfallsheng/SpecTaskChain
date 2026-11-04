@@ -219,11 +219,15 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
   }
   const st = state[next.spec.id] || { status: 'todo', attempts: 0 };
   if (st.status === 'failed') {
+    const max = batchCfg['max-attempts'];
+    const hint = st.attempts >= max
+      ? `已失败 ${st.attempts} 次（达尝试上限 ${max} 次）`
+      : `处于 failed 态但仅尝试 ${st.attempts}/${max} 次（未达上限）——可 \`taskq done ${next.spec.id} --verdict "..."\` 重新验收，通过即恢复接力`;
     return {
       task: next,
       prompt: '',
       exitCode: 12,
-      summary: `⛔ 任务「${next.spec.id}」已失败 ${st.attempts} 次（达尝试上限 ${batchCfg['max-attempts']} 次）——需人工介入：检查产出与规格，修复后运行 \`taskq done ${next.spec.id} --verdict "..."\` 重新验收；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`,
+      summary: `⛔ 任务「${next.spec.id}」${hint}——需人工介入：检查产出与规格，修复后重验；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`,
     };
   }
   if (next.module && next.module.constraintsMissing) {
@@ -257,13 +261,15 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
 }
 
 /** 登记任务状态（done 命令写入；attempts = 失败次数，failed 时 +1） */
-export function markTaskState(cfg: TaskQConfig, taskId: string, status: 'doing' | 'done' | 'failed', verdict?: string, spent?: number): void {
+export function markTaskState(cfg: TaskQConfig, taskId: string, status: 'doing' | 'done' | 'failed' | 'todo', verdict?: string, spent?: number): void {
   const state = readState(cfg);
   const prev = state[taskId] || { status: 'todo', attempts: 0 };
   const now = new Date().toISOString();
+  // attempts = 失败尝试次数：failed（达上限）与 todo（验收失败回退，仅 done 命令会以此态调用）都 +1；
+  // reset 复位不走本函数（直接写 state 清零），doing/done 不计数
   state[taskId] = {
     status,
-    attempts: prev.attempts + (status === 'failed' ? 1 : 0),
+    attempts: prev.attempts + (status === 'failed' || status === 'todo' ? 1 : 0),
     doneAt: status === 'done' ? now : prev.doneAt,
     doingAt: status === 'doing' ? now : prev.doingAt,
     verdict: verdict || prev.verdict,

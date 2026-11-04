@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## 0.2.34（2026-11-04）
+
+**done 状态机修复**。验收未通过不再「一刀切 failed」：
+
+- **未达上限回 todo**：第 N 次验收失败（N < max-attempts）→ 任务回 todo 可重试，接力能再次领取；failed 只属于达上限（此前第 1 次失败就标 failed，接力被 exit 12 拦停谎报「达上限」——一个失败尝试就能掐死整条链）
+- **verdict 不污染**：失败路径不再写 AI 评审文本（此前 status=failed 配 verdict=「pass …」自相矛盾）；机器判定优先
+- **failed 拦停提示动态化**：按 attempts vs 上限给出准确提示（防御旧脏数据谎报）
+- **draft 验收拦截**：draft 任务（规格未补全）done 直接拦——验收门禁空跑无意义，与 run 拦 draft 同一语义
+- 测试 417（+4：回 todo / 达上限才 failed / 接力重领 / draft 拦截）
+
+**clarify 正文澄清度体检**。体检不再只看字段完备，也看内容实质：
+
+- **正文澄清度三查**：正文空白 / 正文只是 goal 的复制品 / 正文残留模板占位符（骨架未填实）→ 各报建议级信号——此前这三种形态只要三必填齐全就被盖章「规格干净，无需澄清」（example 实测 8/36 任务正文零澄清，其中 2 个被体检误评干净）
+- **占位符单一事实来源**：占位符集合从内置模板（`builtinTemplatePlaceholders`）导出，体检与模板永不脱节
+- 测试 418（+1：正文澄清度三查）
+
+**队列级视图归位 queue/reports/**。GUIDE.html / PANEL.html / CLARIFY.html / REPORT.html / QUEUE_REPORT.md 五个队列级视图文件不再平铺 queue/ 顶层，统一收进 queue/reports/（与批次级 overview/reports/ 命名呼应，queue/ 顶层只剩批次目录与 .taskchain）：
+
+- **落盘迁移**：init 引导页、status --panel 面板、clarify --html 体检、report 账本 / --html 复盘全部写 queue/reports/（目录自动创建）
+- **文案同步**：help 说明、引导页门户段落、报告 footer、命令成功提示全部指向新路径
+- 旧位置文件不自动迁移：升级后手动把 queue/GUIDE.html 等挪进 queue/reports/ 即可（CLI 不删用户文件）
+
 ## 0.2.33（2026-11-04）
 
 **裸 new 拦截**。`taskq new` 不带任务描述时不再兜底建「未命名任务」占位——直接提示用法、不建目录；拦截路径不设接力退出码（提示用法 exit 0，带描述建任务才 exit 10 接力）。守卫下沉到 newCommand 命令层（对齐 split 无素材拦截手势），测试 +1（裸 new 不建目录 + 用法提示）。

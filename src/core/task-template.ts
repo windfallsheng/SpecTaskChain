@@ -156,6 +156,18 @@ export function resolveSpecTemplate(metaDir: string, taskDir: string, type: stri
   return { content: BUILTIN_SPEC_TEMPLATES[type] || BUILTIN_SPEC_TEMPLATES.general, source: 'builtin' };
 }
 
+/** 内置模板的占位符行全集（「（…）」形态）——clarify 体检用它识别骨架未填实 */
+export function builtinTemplatePlaceholders(): Set<string> {
+  const set = new Set<string>();
+  for (const tpl of Object.values(BUILTIN_SPEC_TEMPLATES)) {
+    for (const line of tpl.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('（') && trimmed.endsWith('）')) set.add(trimmed);
+    }
+  }
+  return set;
+}
+
 /** 模板来源的人类可读名（prompt / 输出提示用） */
 export function templateSourceLabel(source: SpecTemplate['source'], type: string): string {
   switch (source) {

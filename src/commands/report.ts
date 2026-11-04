@@ -12,5 +12,5 @@ export function reportCommand(cfg: TaskQConfig, opts: ReportOptions & { html?: b
   }
   const report = generateQueueReport(cfg, opts);
   if (report.startsWith('❌')) return report;
-  return `✅ 队列报告已生成：${join(cfg.queueDir, 'QUEUE_REPORT.md')}\n\n${report.split('\n').slice(0, 8).join('\n')}\n...`;
+  return `✅ 队列报告已生成：${join(cfg.queueDir, 'reports', 'QUEUE_REPORT.md')}\n\n${report.split('\n').slice(0, 8).join('\n')}\n...`;
 }

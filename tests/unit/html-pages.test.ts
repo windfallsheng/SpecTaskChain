@@ -75,21 +75,21 @@ describe('CLARIFY.html：体检三档红黄灰分组', () => {
     expect(html).toContain('&lt;script&gt;');
   });
 
-  it('clarifyCommand --html 落盘 queue/CLARIFY.html', () => {
+  it('clarifyCommand --html 落盘 queue/reports/CLARIFY.html', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-clarify-html-'));
     newCommand(cfg(root), { goal: '写文档', type: 'doc', draft: true });
     const out = clarifyCommand(cfg(root), { html: true });
     expect(out).toContain('🩺 体检报告已生成');
-    expect(existsSync(join(root, 'queue', 'CLARIFY.html'))).toBe(true);
+    expect(existsSync(join(root, 'queue', 'reports', 'CLARIFY.html'))).toBe(true);
   });
 });
 
 describe('REPORT.html：复盘状态分布与执行记录', () => {
-  it('写盘 queue/REPORT.html + 状态分布 + 执行记录', () => {
+  it('写盘 queue/reports/REPORT.html + 状态分布 + 执行记录', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-report-html-'));
     newCommand(cfg(root), { goal: '写迁移手册', type: 'doc', draft: true });
     const p = generateReportHtml(cfg(root));
-    expect(p).toBe(join(root, 'queue', 'REPORT.html'));
+    expect(p).toBe(join(root, 'queue', 'reports', 'REPORT.html'));
     const html = readFileSync(p, 'utf-8');
     expect(html).toContain('<!DOCTYPE html>');
     expect(html).toContain('任务总数');

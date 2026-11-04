@@ -179,7 +179,7 @@ export function generateQueueReport(cfg: TaskQConfig, opts: ReportOptions = {}):
   }
   const report = lines.join('\n');
   // 未 init 也兜底：自动补目录，不裸奔
-  const reportPath = join(cfg.queueDir, 'QUEUE_REPORT.md');
+  const reportPath = join(cfg.queueDir, 'reports', 'QUEUE_REPORT.md');
   mkdirSync(dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, report, 'utf-8');
   return report;
@@ -260,10 +260,10 @@ footer{margin-top:32px;color:#94a3b8;font-size:12.5px}
 ${failed.length ? `<h2>失败任务（需人工介入）</h2>${failedCards}` : ''}\n${overdue.length ? `<h2>逾期任务（到期未完成）</h2>${overdueCards}` : ''}
 ${retries.length ? `<h2>重试记录</h2>${retryBlocks}` : ''}
 ${statBlock}
-<footer>SpecTaskChain · 完整账本见 QUEUE_REPORT.md（taskq report）</footer>
+<footer>SpecTaskChain · 完整账本见 queue/reports/QUEUE_REPORT.md（taskq report）</footer>
 </body>
 </html>`;
-  const reportPath = join(cfg.queueDir, 'REPORT.html');
+  const reportPath = join(cfg.queueDir, 'reports', 'REPORT.html');
   mkdirSync(dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, html, 'utf-8');
   return reportPath;

@@ -98,8 +98,21 @@ describe('clarify：两级信号 + 分级报告', () => {
   });
 
   it('无问题报告为清晰可执行', () => {
-    const spec = buildSpec('t1', '/x', { role: 'document-writer', estimate: '4', goal: '写迁移文档', output: 'docs/', acceptance: { artifacts: [{ path: 'docs/*.md' }] } }, '', 'general');
+    const spec = buildSpec('t1', '/x', { role: 'document-writer', estimate: '4', goal: '写迁移文档', output: 'docs/', acceptance: { artifacts: [{ path: 'docs/*.md' }] } }, '迁移三个模块的文档，保留截图与链接', 'general');
     expect(detectTaskIssues(spec)).toHaveLength(0);
+  });
+
+  it('正文澄清度三查：空白 / goal 复制 / 骨架占位符残留', () => {
+    const base = { role: 'document-writer', estimate: '4', goal: '写迁移文档', output: 'docs/', acceptance: { artifacts: [{ path: 'docs/*.md' }] } };
+    // 空白：只有 goal 一行
+    const blank = buildSpec('t1', '/x', base, '', 'general');
+    expect(detectTaskIssues(blank).map((i) => i.message).join('|')).toContain('正文空白');
+    // goal 复制：正文只是 goal 的复制品
+    const dup = buildSpec('t2', '/x', base, '写迁移文档', 'general');
+    expect(detectTaskIssues(dup).map((i) => i.message).join('|')).toContain('复制品');
+    // 骨架残留：占位符未替换为实质内容
+    const skel = buildSpec('t3', '/x', base, '## 任务背景\n\n（为什么做这件事）\n\n## 执行要点\n\n迁移脚本与文档清单', 'general');
+    expect(detectTaskIssues(skel).map((i) => i.message).join('|')).toContain('骨架未填实');
   });
 });
 

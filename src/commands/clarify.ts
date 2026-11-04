@@ -23,7 +23,7 @@ export interface ClarifyOptions {
   taskId?: string;  // 单任务（按 ID）
   file?: string;    // 直接指文件（手动写场景：宿主 AI 消解「上面的内容」后传入）
   chain?: boolean;  // 建链前查：只查链级硬伤（依赖悬空/产出冲突/模块约束/命名重复/循环依赖），不逐任务三必填
-  html?: boolean;   // 体检报告 HTML 化（queue/CLARIFY.html，三档红黄灰分组）
+  html?: boolean;   // 体检报告 HTML 化（queue/reports/CLARIFY.html，三档红黄灰分组）
   noReport?: boolean;   // 报告开关（临时）：当次不生成评估报告
   forceReport?: boolean; // 报告开关（临时）：当次强制生成（覆盖批次配置 reports: false）
   decide?: boolean;     // 判断题通道：exec 档逐项裁决（y 采纳 / n 换方案 / s 跳过），采纳写回 SPEC.md decisions 留痕
@@ -200,7 +200,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
 
   // --html：体检报告可视化（三档红黄灰分组卡片）；终端文本照旧可读
   if (opts.html) {
-    const htmlPath = join(cfg.queueDir, 'CLARIFY.html');
+    const htmlPath = join(cfg.queueDir, 'reports', 'CLARIFY.html');
     mkdirSync(dirname(htmlPath), { recursive: true });
     writeFileSync(htmlPath, renderClarifyHtml(issues), 'utf-8');
     const head = renderClarifyReport(issues).split('\n').slice(0, 6).join('\n');

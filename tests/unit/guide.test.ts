@@ -54,10 +54,10 @@ describe('HTML 引导页：内容章节与写盘', () => {
     expect(html).toContain('materials/');
   });
 
-  it('generateGuideHtml 写盘 queue/GUIDE.html 且可读', () => {
+  it('generateGuideHtml 写盘 queue/reports/GUIDE.html 且可读', () => {
     const cfg = makeCfg();
     const p = generateGuideHtml(cfg);
-    expect(p).toBe(join(cfg.queueDir, 'GUIDE.html'));
+    expect(p).toBe(join(cfg.queueDir, 'reports', 'GUIDE.html'));
     expect(existsSync(p)).toBe(true);
     expect(readFileSync(p, 'utf-8').startsWith('<!DOCTYPE html>')).toBe(true);
   });

@@ -1,5 +1,5 @@
 // HTML 引导页：init 自动生成 + taskq help guide --html 随时再生成
-// 与 PANEL.html 同院（queue/ 下），同一视觉语言；单文件零依赖，双击即看
+// 与 PANEL.html 同院（queue/reports/ 下），同一视觉语言；单文件零依赖，双击即看
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { TaskQConfig } from './config';
@@ -123,7 +123,7 @@ footer{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3
 
 <h2>可视化页面（都长在 queue/ 下，双击即看）</h2>
 <div class="zone">
-  <p><b>GUIDE.html</b> 进门（本页，init 自动生成）· <b>PANEL.html</b> 现状（<b>status --panel</b>）· <b>CLARIFY.html</b> 问题（<b>clarify --html</b> 体检三档分组）· <b>REPORT.html</b> 复盘（<b>report --html</b> 状态分布 + 失败红卡）——随对应命令刷新，与终端输出同源。</p>
+  <p>四扇门户同住 <b>queue/reports/</b>：<b>GUIDE.html</b> 进门（本页，init 自动生成）· <b>PANEL.html</b> 现状（<b>status --panel</b>）· <b>CLARIFY.html</b> 问题（<b>clarify --html</b> 体检三档分组）· <b>REPORT.html</b> 复盘（<b>report --html</b> 状态分布 + 失败红卡）——随对应命令刷新，与终端输出同源。</p>
 </div>
 
 <h2>常见问题</h2>
@@ -140,9 +140,9 @@ footer{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3
 </html>`;
 }
 
-/** 生成引导页到 queue/GUIDE.html（与 PANEL.html 同院），返回路径 */
+/** 生成引导页到 queue/reports/GUIDE.html（与 PANEL.html 同院），返回路径 */
 export function generateGuideHtml(cfg: Pick<TaskQConfig, 'queueDir'>): string {
-  const guidePath = join(cfg.queueDir, 'GUIDE.html');
+  const guidePath = join(cfg.queueDir, 'reports', 'GUIDE.html');
   mkdirSync(dirname(guidePath), { recursive: true });
   writeFileSync(guidePath, guideHtml(cfg), 'utf-8');
   return guidePath;
