@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.2.22（2026-11-04）
+
+**评估报告**：澄清与完成两个节点自动生成报告，后台不阻断主流程。
+
+- `taskq clarify` 全量体检后 → 澄清评估报告（每任务澄清状态逐条 + 总体评级/维度统计），落 `queue/{批次}/overview/reports/CLARIFY_REPORT-*.md/.html`
+- `taskq run`/`execute` 队列清空时 → 完成评估报告（每任务验收结论/完成时刻 + 完成率/重试统计与总评），落同目录 `DONE_REPORT-*.md/.html`
+- 报告由 detached 后台 worker 渲染写盘（主进程 unref 立即返回）；worker 失败只落 `.log` 不阻断队列
+- 命名区分 CLARIFY_REPORT / DONE_REPORT；同批同日覆盖为最新状态；完成报告仅在「真有过执行」时生成（防空转噪音）
+- 新增 `assessment.ts`（聚合器 + 双渲染器 + 派发）/ `report-worker.ts`（后台 worker 入口）；测试 266 → 278
+
 ## 0.2.0（2026-10-30）
 
 **破坏性变更**：队列目录从旧式 `queue/tasks/` 升级为多批次 `queue/batch-{NNN}/`（旧 `tasks/` 目录兼容为第 0 批，老项目照常工作）。

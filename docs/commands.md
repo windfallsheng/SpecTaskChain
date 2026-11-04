@@ -85,7 +85,7 @@ taskq clarify [--task 任务ID] [--file SPEC路径] [--chain] [--html]
 | `--file <path>` | 体检任意 SPEC.md 文件（未入队也行） |
 | `--chain` | 链级体检（建链查）：依赖悬空 + 产出冲突 + 模块约束 + 命名重复 + 循环依赖——只查链执行必翻车的硬伤，不逐任务报三必填（建链前任务可能还没写完） |
 | `--html` | 体检报告可视化：queue/CLARIFY.html（三档红黄灰分组卡片） |
-| （无参数） | 全队列体检（翻车查）：链级硬伤 + 各任务三必填全量 |
+| （无参数） | 全队列体检（翻车查）：链级硬伤 + 各任务三必填全量；结束后后台生成澄清评估报告（MD+HTML 落批次 overview/reports/，不阻断终端输出） |
 
 ## taskq run
 
@@ -101,7 +101,7 @@ taskq run [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
 | :--- | :--- | :--- |
 | `10` | 有下一任务，prompt 已输出（任务已占位 doing） | 执行 → `taskq done` → 再 `taskq run` |
 | `12` | 拦截，四种情形：下一任务是 draft / 模块缺共享 spec / 有任务正在执行中 / 任务失败需人工介入 | 按摘要指引处理 |
-| `0` | 队列已清空 | 完成 |
+| `0` | 队列已清空 | 完成（后台自动生成完成评估报告：MD+HTML 落批次 overview/reports/） |
 
 完整协议见 [relay-protocol.md](relay-protocol.md)。
 
@@ -231,3 +231,4 @@ taskq help guide --html    # 生成 HTML 引导页 queue/GUIDE.html（双击即�
 | PANEL.html | `status --panel` | 现状——队列仪表盘 |
 | CLARIFY.html | `clarify --html` | 问题——体检报告（三档红黄灰分组） |
 | REPORT.html | `report --html` | 复盘——执行账本（状态分布 + 失败红卡） |
+| 批次 overview/reports/ 下的 CLARIFY_REPORT / DONE_REPORT（MD+HTML） | 全量澄清 / 队列清空后自动生成（后台不阻断） | 档案——澄清评估与完成评估（每任务 + 总体评级） |

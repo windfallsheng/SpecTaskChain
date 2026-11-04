@@ -3,8 +3,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { TaskQConfig } from '../core/config';
-import { scanQueue } from '../core/queue';
+import { scanQueue, latestBatchId } from '../core/queue';
 import { readSpec, parseFrontmatter, buildSpec } from '../core/task-spec';
+import { buildClarifyAssessment, dispatchAssessment, assessmentNotice } from '../core/assessment';
 import {
   detectTaskIssues,
   detectChainIssues,
@@ -24,6 +25,7 @@ export interface ClarifyOptions {
 export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   let issues: ClarifyIssue[] = [];
+  let clarifyNotice = ''; // 全量体检触发澄清评估报告（后台生成）时的可见提示，随终端输出末尾附带
 
   if (opts.file) {
     // 手动写场景：直接指文件（「澄清当前文件」——编辑器焦点由宿主/编辑器传入）
@@ -57,6 +59,12 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     for (const m of queue.modules) {
       for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot));
     }
+    // 全量体检 → 澄清评估报告后台生成（不阻断终端输出）：每任务评估 + 总体评级，MD+HTML 落批次 overview/reports/
+    const batchId = latestBatchId(queue.batches) || 'tasks';
+    const allTasks = [...queue.tasks, ...queue.modules.flatMap((m) => m.subtasks)];
+    const report = buildClarifyAssessment(batchId, allTasks, issues);
+    dispatchAssessment(cfg, report);
+    clarifyNotice = assessmentNotice(cfg.queueDir, report);
   }
 
   // --html：体检报告可视化（三档红黄灰分组卡片）；终端文本照旧可读
@@ -65,7 +73,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     mkdirSync(dirname(htmlPath), { recursive: true });
     writeFileSync(htmlPath, renderClarifyHtml(issues), 'utf-8');
     const head = renderClarifyReport(issues).split('\n').slice(0, 6).join('\n');
-    return `🩺 体检报告已生成：${htmlPath}\n\n${head}\n...`;
+    return `🩺 体检报告已生成：${htmlPath}\n\n${head}\n...${clarifyNotice ? `\n\n${clarifyNotice}` : ''}`;
   }
-  return renderClarifyReport(issues);
+  return clarifyNotice ? `${renderClarifyReport(issues)}\n${clarifyNotice}` : renderClarifyReport(issues);
 }
