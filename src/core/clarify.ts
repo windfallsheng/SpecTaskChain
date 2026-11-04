@@ -294,13 +294,14 @@ export function detectDuplicateNames(queue: QueueScan): ClarifyIssue[] {
   check(queue.tasks, '任务');
   check(queue.modules, '模块');
   for (const m of queue.modules) check(m.subtasks, `模块「${m.id}」子任务`);
-  // 跨层 ID 撞车：任务 ID = state.json 键，顶层与子任务同 ID 会共享状态
-  const topIds = new Set(queue.tasks.map((t) => t.id));
-  for (const m of queue.modules) {
-    for (const s of m.subtasks) {
-      if (topIds.has(s.id)) {
-        issues.push({ level: 'blocking', taskId: s.id, message: `任务 ID「${s.id}」与顶层任务重复——ID 是状态文件的键，跨层重复会共享状态，请改名区分` });
-      }
+  // 完整 ID 撞车（跨批次同名目录/跨模块同名子任务）：ID = state.json 键，同 ID 会共享状态——CLI 新建会自动拼 hash 避开，手工建的可能撞
+  const idSeen = new Map<string, string>();
+  const allIds = [...queue.tasks.map((t) => t.id), ...queue.modules.flatMap((m) => m.subtasks.map((s) => s.id))];
+  for (const tid of allIds) {
+    if (idSeen.has(tid)) {
+      issues.push({ level: 'blocking', taskId: tid, message: `任务 ID「${tid}」重复（跨批次/跨模块同名目录）——ID 是状态文件的键，重复会共享状态，请改名区分` });
+    } else {
+      idSeen.set(tid, tid);
     }
   }
   return issues;

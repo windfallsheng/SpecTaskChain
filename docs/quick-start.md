@@ -26,7 +26,7 @@ taskq new "写三篇数据迁移文档，覆盖用户、订单、支付模块" -
 
 发生了什么：
 
-1. 任务目录 `queue/batch-001/task-01-xiesanpianwendang/SPEC.md` 落盘，**恒定 draft 骨架起步**（goal 已填你的原话，output/acceptance 留空，`draft: true`）。
+1. 任务目录 `queue/batch-001/task-xiesanpianwendang/SPEC.md` 落盘，**恒定 draft 骨架起步**（goal 已填你的原话，output/acceptance 留空，`draft: true`）。
 2. 输出 `[TASKQ_SPEC_DRAFT]` 标记——请求宿主 AI 生成规格草案：补全 output（产出位置）、acceptance（验收三态）、正文细节。
 3. AI 写回 SPEC.md 后，任务从骨架变成完整规格。
 
@@ -41,7 +41,7 @@ taskq new "写三篇数据迁移文档，覆盖用户、订单、支付模块" -
 ## 第三步：clarify —— 随叫随到的体检
 
 ```bash
-taskq clarify --task task-01-xiesanpianwendang
+taskq clarify --task task-xiesanpianwendang
 ```
 
 体检报告分三级：⛔ 阻塞（缺三必填、依赖悬空、产出冲突）/ ⚠️ 建议（模糊词、指代不明、验收只有软门禁）/ ⏳ 待定（draft 标记）。
@@ -65,7 +65,7 @@ taskq run
 ## 第五步：done —— 验收登记
 
 ```bash
-taskq done task-01-xiesanpianwendang --verdict "pass 三篇文档结构清晰，覆盖三个模块"
+taskq done task-xiesanpianwendang --verdict "pass 三篇文档结构清晰，覆盖三个模块"
 ```
 
 机器当场跑门禁：

@@ -11,11 +11,11 @@ queue/
 │   ├── config/              ← 批次配置目录（保留目录，与用户任务/模块内容分开）
 │   │   └── BATCH.yaml       ← 批次配置：接力执行的「脾气」（batch-size/max-attempts/skip-draft）
 │   ├── overview/            ← 批次元信息目录（保留目录）：reports/ 下存澄清/完成评估报告
-│   ├── task-01-xiewendang/  ← 顶层任务：目录 = 任务 ID（task- 打头）
+│   ├── task-xiewendang/  ← 顶层任务：目录 = 任务 ID（task- 打头）
 │   │   └── SPEC.md
 │   └── module-auth/          ← 任务模块：共享 spec 的院落（module- 前缀 = CLI 生成时的模块标记）
 │       ├── CONSTRAINTS.md    ← 模块公共约束（每次执行子任务前重读；顶部可加 name/purpose/created-at 元数据）
-│       └── 02-denglujiekou/   ← 第三层子任务：目录名 = 任务 ID（无 task- 前缀）
+│       └── denglujiekou/     ← 第三层子任务：目录名 = 任务 ID（无 task- 前缀）
 │           └── SPEC.md
 ├── batch-002/               ← 下次要做的另一批任务（mkdir 手工建，建完即插队为最新批次）
 ├── GUIDE.html               ← HTML 引导页（init 生成；同院兄弟：PANEL/CLARIFY/REPORT.html）
@@ -30,10 +30,10 @@ queue/
 
 - **批次目录 = 「一次要做的所有任务」的容器**：`batch-{NNN}`（NNN 三位补零）。下次要用再建下一个（`mkdir queue/batch-002`），可建任意多个。旧式 `tasks/` 兼容为第 0 批（老项目继续工作）。
 - **聚焦语义**：`taskq run`/`status` 默认只聚焦最新批次（数字序最大者；无 batch-* 时 tasks 兜底）；`taskq new` 默认把新任务落最新批次；老批次用 `--batch <批次名>` 手动指定，`--batch all` 全批次。
-- **任务 ID = 目录名**（如 `task-01-xiewendang`、`module-auth/02-denglujiekou` 的子任务 ID 是 `02-denglujiekou`）。
-- **编号全局递增**：序号跨所有批次取最大 +1（batch-002 里的任务接着排，不从 01 重新开始）——任务 ID 全局唯一，state.json 的键永不撞车。
+- **任务 ID = 目录名**（如 `task-xiewendang`、`module-auth/denglujiekou` 的子任务 ID 是 `denglujiekou`）。
+- **重名拼短 hash**：CLI 新建时若队列中已有同 ID（跨批次/跨模块），自动拼内容短 hash 区分（`task-xiewendang-7d56cb`，sha1 前 6 位，同内容幂等）——任务 ID 全局唯一，state.json 的键永不撞车；同名同内容重复建两次后第三次报错提示换名。
 - 顶层含 `SPEC.md` 的目录是任务；否则按模块目录扫描（`CONSTRAINTS.md` + 第三层子任务）。
-- **命名仪式**：CLI 新建时任务目录 = `task-{NN}-{slug}`（普通任务同 `task-` 前缀——参考模块 `module-` 前缀的效果，`task-` 打头一眼区分于模块目录；`--name` 优先，已带 `task-` 前缀则尊重原样不叠加；无 `--name` 时从 goal 提取语义 slug，中文转全拼，提不出用任务类型键兜底——`task-01-script` 而非 `task-01`）；模块目录 = `module-{slug}`（语义化前缀，已带前缀不叠加）；批次目录 = `batch-{NNN}`。用户手工建的目录不受仪式约束——扫描只认结构（有无 SPEC.md），名字叫什么都认。
+- **命名仪式**：CLI 新建时任务目录 = `task-{slug}`（普通任务同 `task-` 前缀——参考模块 `module-` 前缀的效果，`task-` 打头一眼区分于模块目录；不带序号、不关注目录顺序；`--name` 优先，已带 `task-` 前缀则尊重原样不叠加；无 `--name` 时从 goal 提取语义 slug，中文转全拼，提不出用任务类型键兜底——`task-script` 而非 `task`）；模块目录 = `module-{slug}`（语义化前缀，已带前缀不叠加）；批次目录 = `batch-{NNN}`。用户手工建的目录不受仪式约束——扫描只认结构（有无 SPEC.md），名字叫什么都认。
 - 任务目录内可自由放置材料文件（图片、数据等）：在 SPEC.md 正文中引用（`[标题](相对路径)` 或裸路径），执行时由 CLI 消解为真实内容嵌入 prompt（基准 = 项目根）；引用的文件不存在会报阻塞，绝不静默跳过。
 - 代码与产出**不在任务目录内**：代码写到 SPEC.md 的 `output` 声明的项目根路径，任务目录只放规格。
 
@@ -213,7 +213,7 @@ new 输出会亮明本次模板来源；模板只管正文章节骨架，frontma
 {
   "version": 1,
   "tasks": {
-    "task-01-xiewendang": {
+    "task-xiewendang": {
       "status": "done",            // todo / doing / done / failed / draft
       "attempts": 2,               // 尝试次数
       "doneAt": "2026-10-12T10:00:00.000Z",

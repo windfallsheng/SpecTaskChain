@@ -2,6 +2,7 @@
 // 写规格三式：对话成规格 / 验收先行 / 渐进补全（draft 标记 = 渐进补全的通道）
 // 命名机制 = 「对话成规格」的前半步：用户指定（--name）优先（中文转全拼 + frontmatter name 显示名），
 // AI 生成草案时顺手续上显示名；目录名 = ASCII slug（机器身份），显示名 = name 字段（人类可读）
+import { createHash } from 'crypto';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TaskQConfig } from '../core/config';
@@ -32,34 +33,9 @@ function displayName(raw: string, slug: string): string | undefined {
   return undefined;
 }
 
-/** 下一序号：取现有目录编号最大值 +1（删除过中间任务也不会复用旧号覆盖） */
-function nextSeq(nums: number[]): string {
-  return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0');
-}
-
-/** 目录名取编号：'task-03-xiewendang' → 3；老格式 '03-xiewendang'/'03-task-xiewendang' 兼容；提不出（模块目录等）忽略 */
-function dirNum(name: string): number {
-  const m = name.match(/^(?:task-)?(\d+)/);
-  return m ? parseInt(m[1], 10) : NaN;
-}
-
-/** 全局编号池：跨批次扫描目录名（目录存在即占号，含空目录与模块子目录）——任务 ID 全局唯一（state.json 键不撞）的前提 */
-function allDirNums(cfg: TaskQConfig, queue: QueueScan): number[] {
-  const { readdirSync, statSync } = require('fs');
-  const nums: number[] = [];
-  for (const b of queue.batches) {
-    const area = join(cfg.queueDir, b.id);
-    for (const e of readdirSync(area)) {
-      const full = join(area, e);
-      if (!statSync(full).isDirectory()) continue;
-      nums.push(dirNum(e));
-      // 模块目录：其子任务目录同样占号
-      for (const s of readdirSync(full)) {
-        if (statSync(join(full, s)).isDirectory()) nums.push(dirNum(s));
-      }
-    }
-  }
-  return nums.filter((n) => !isNaN(n));
+/** 撞名区分短 hash：同 slug 不同内容 → 不同 hash（内容决定，幂等不漂移）；6 位足够目录内区分 */
+function shortHash(s: string): string {
+  return createHash('sha1').update(s).digest('hex').slice(0, 6);
 }
 
 export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
@@ -75,16 +51,25 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   ensureBatchConfig(tasksDir); // 批次「脾气」落盘（幂等：已存在不覆盖）——batch-size/max-attempts/skip-draft 三把默认姿势
   const { readdirSync, statSync, existsSync } = require('fs');
   const typeDef = resolveTaskType(cfg.metaDir, opts.type || 'general');
-  // 编号全局递增：跨所有批次（含模块子任务）取最大 +1——每批次从 01 重新编号会让 state 键撞车
-  const seq = nextSeq(allDirNums(cfg, queue));
   // 命名仪式：--name 优先；无 --name 从 goal 提取语义 slug（「整理会议纪要」→ zhenglihuiyijiyao）；
   // goal 提不出语义时用任务类型键兜底（doc/script/data…，类型即任务形态）——绝不落 'task' 哑名
   const goalSlug = toSlug(opts.goal);
   const slug = opts.name ? toSlug(opts.name) : goalSlug === 'task' ? typeDef.name : goalSlug;
-  // 普通任务同 task- 前缀（参考模块 module- 前缀的效果）：目录名 = task-{NN}-{slug}，
-  // task- 打头一眼区分于模块目录；--name 已带 task- 前缀则尊重原样（不叠加不加序号）；
-  // 序号紧跟 task- 之后，编号全局递增不变
-  const id = slug.startsWith('task-') ? slug : `task-${seq}-${slug}`;
+  // 普通任务同 task- 前缀（参考模块 module- 前缀的效果）：目录名 = task-{slug}，task- 打头一眼区分于模块目录；
+  // 不带序号、不关注目录顺序（扫描只认结构不认编号）；--name 已带 task- 前缀则尊重原样；
+  // 重名（队列中已有同 ID）拼内容短 hash 区分——同 slug 不同内容自动错开，state 键永不撞车
+  const takenIds = new Set<string>();
+  for (const t of queue.tasks) takenIds.add(t.id);
+  for (const m of queue.modules) for (const s of m.subtasks) takenIds.add(s.id);
+  const seed = opts.name || opts.goal;
+  const baseId = slug.startsWith('task-') ? slug : `task-${slug}`;
+  let id = baseId;
+  if (takenIds.has(id)) {
+    id = `${baseId}-${shortHash(seed)}`;
+    if (takenIds.has(id)) {
+      return `❌ 目录名「${baseId}」已存在且内容 hash 仍撞车（同名同内容重复建）。换一个 --name，或先处理现有任务目录。`;
+    }
+  }
   const shownName = opts.name ? displayName(opts.name, slug) : undefined;
 
   if (opts.group) {
@@ -103,11 +88,18 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
         'utf-8'
       );
     }
-    // 模块内子任务同样用全局编号：与顶层任务分属不同调用，各自取最大 +1 不撞；跨层撞车由 clarify 体检拦截
-    const subId = nextSeq(allDirNums(cfg, queue));
-    const subDir = join(modDir, `${subId}-${slug}`);
+    // 模块内子任务同样无序号：目录名 = {slug}；与队列中已有 ID（含顶层任务）撞名时拼内容短 hash——
+    // ID 是 state.json 键，跨层撞车会共享状态，绝不能裸撞
+    let subName = slug;
+    if (takenIds.has(subName)) {
+      subName = `${slug}-${shortHash(seed)}`;
+      if (takenIds.has(subName)) {
+        return `❌ 子任务目录「${modName}/${slug}」已存在且内容 hash 仍撞车。换一个 --name，或先处理现有子任务。`;
+      }
+    }
+    const subDir = join(modDir, subName);
     if (existsSync(subDir)) {
-      return `❌ 子任务目录「${modName}/${subId}-${slug}」已存在（名称撞车）。换一个 --name，或先处理现有子任务目录。`;
+      return `❌ 子任务目录「${modName}/${subName}」已存在（名称撞车）。换一个 --name，或先处理现有子任务目录。`;
     }
     mkdirSync(subDir, { recursive: true });
     // 正文 = 规格模板骨架（覆盖链：任务级 → 类型级 → 通用 → 系统内置）
@@ -133,12 +125,12 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
     const lines = [
       `✅ 子任务已入模块「${modName}」${groupShown ? `（${groupShown}）` : ''} → 批次 ${batchId}（任务模块 = 共享 spec 的院落）`,
       '',
-      `  子任务：${modName}/${subId}-${slug}`,
+      `  子任务：${modName}/${subName}${subName !== slug ? `（撞名拼短 hash 区分，state 键各归各）` : ''}`,
       `  公共约束：${constraintsPath}（每次执行子任务前重读）`,
       '',
     ];
     if (!opts.draft) {
-      lines.push(`[TASKQ_SPEC_DRAFT] 宿主 AI 请生成规格草案并写回 SPEC.md（补全 output/acceptance 三态），完成后提醒用户 \`taskq clarify --task ${subId}-${slug}\` 确认。`);
+      lines.push(`[TASKQ_SPEC_DRAFT] 宿主 AI 请生成规格草案并写回 SPEC.md（补全 output/acceptance 三态），完成后提醒用户 \`taskq clarify --task ${subName}\` 确认。`);
       lines.push('规格三必填：goal / output / acceptance（产物门禁 + 断言门禁 + 评审门禁）。验收先行：怎么算做完，是必填第一公民。');
       lines.push('命名要求：若 frontmatter 无 name 字段，补一个显示名（\`name: 用户迁移文档\`，可中文）；目录名已是 ASCII slug，不要改目录名。');
     }
@@ -173,6 +165,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   );
   const lines = [
     `✅ 任务「${id}」${shownName ? `（${shownName}）` : ''}已入队 → 批次 ${batchId}（draft 态：等待规格补全，补全前 taskq run 会拦截）`,
+    ...(id !== baseId ? [`  撞名拼短 hash 区分：${baseId} → ${id}（重名不打架，state 键各归各）`] : []),
     '',
     `  类型：${opts.type || 'general'}（${typeDef.code ? '代码任务' : '非代码任务'})`,
     `  可用类型：${listBuiltinTypes().join(' / ')}，自定义类型放 .taskchain/TASK_TYPES/{类型}.md`,

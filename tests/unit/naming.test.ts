@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, readFileSync } from 'fs';
+import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { toSlug, hasCJK, isPlaceholderSlug, hasNonAscii, slugFromDir } from '../../src/core/task-naming';
@@ -36,14 +36,14 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '写迁移文档', name: '迁移文档', draft: true });
     expect(out).toContain('qianyiwendang');
-    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-01-qianyiwendang', 'SPEC.md'), 'utf-8');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-qianyiwendang', 'SPEC.md'), 'utf-8');
     expect(spec).toContain('name: 迁移文档');
   });
 
   it('--name 英文 → 目录直接用，不重复写 name', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     newCommand(cfg(root), { goal: '写文档', name: 'migration-docs', draft: true });
-    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-01-migration-docs', 'SPEC.md'), 'utf-8');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-migration-docs', 'SPEC.md'), 'utf-8');
     expect(spec).not.toContain('name:');
   });
 
@@ -54,7 +54,7 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
     expect(out).toContain('认证模块');
     const constraints = readFileSync(join(root, 'queue', 'batch-001', 'module-renzhengmokuai', 'CONSTRAINTS.md'), 'utf-8');
     expect(constraints).toContain('认证模块');
-    const subSpec = readFileSync(join(root, 'queue', 'batch-001', 'module-renzhengmokuai', '01-denglujiekou', 'SPEC.md'), 'utf-8');
+    const subSpec = readFileSync(join(root, 'queue', 'batch-001', 'module-renzhengmokuai', 'denglujiekou', 'SPEC.md'), 'utf-8');
     expect(subSpec).toContain('name: 登录接口');
   });
 
@@ -74,9 +74,9 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
   it('goal 提不出语义 → 兜底任务类型键，不落 task 哑名', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '！！！', type: 'script', draft: true });
-    expect(out).toContain('「task-01-script」');
+    expect(out).toContain('「task-script」');
     expect(out).not.toContain('「task-task-script');
-    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-01-script', 'SPEC.md'), 'utf-8');
+    const spec = readFileSync(join(root, 'queue', 'batch-001', 'task-script', 'SPEC.md'), 'utf-8');
     expect(spec).toContain('goal: ！！！');
   });
 
@@ -92,10 +92,30 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
   it('无 --name → goal 含拉丁片段优先提取（默认落 task- 前缀）', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '写 MySQL 慢查询分析脚本', draft: true });
-    expect(out).toContain('task-01-mysql');
+    expect(out).toContain('task-mysql');
   });
 
-  it('slugFromDir：剥序号 + task- 前缀得语义 slug（老目录兼容）', () => {
+  it('重名 → 拼内容短 hash 区分（不覆盖、state 键各归各）', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    newCommand(cfg(root), { goal: '写文档', name: 'xiewendang', draft: true });
+    const out = newCommand(cfg(root), { goal: '另一种文档', name: 'xiewendang', draft: true });
+    expect(out).toContain('task-xiewendang-');
+    expect(out).toContain('撞名拼短 hash 区分');
+    expect(existsSync(join(root, 'queue', 'batch-001', 'task-xiewendang', 'SPEC.md'))).toBe(true);
+  });
+
+  it('同名同内容重复建 → 第二次拼 hash 区分，第三次报错提示换名', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    newCommand(cfg(root), { goal: '写文档', name: 'xiewendang', draft: true });
+    const second = newCommand(cfg(root), { goal: '写文档', name: 'xiewendang', draft: true });
+    expect(second).toContain('task-xiewendang-');
+    const third = newCommand(cfg(root), { goal: '写文档', name: 'xiewendang', draft: true });
+    expect(third).toContain('❌');
+  });
+
+  it('slugFromDir：剥 task- 前缀得语义 slug（hash 后缀保留，老目录兼容）', () => {
+    expect(slugFromDir('task-xiewendang')).toBe('xiewendang');
+    expect(slugFromDir('task-xiewendang-a1b2c3')).toBe('xiewendang-a1b2c3');
     expect(slugFromDir('task-01-xiewendang')).toBe('xiewendang');
     expect(slugFromDir('01-task-xiewendang')).toBe('xiewendang');
     expect(slugFromDir('01-xiewendang')).toBe('xiewendang');
@@ -145,15 +165,16 @@ describe('clarify：命名体检联动', () => {
     expect(issues.some((i) => i.message.includes('非 ASCII'))).toBe(true);
   });
 
-  it('slug 重复 → 命名重复检测', () => {
+  it('同 ID 跨批次重复 → blocking（state 键撞车拦截）', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const c = cfg(root);
-    newCommand(c, { goal: '写A', name: 'auth', draft: true });
-    newCommand(c, { goal: '写B', name: 'auth', draft: true });
+    newCommand(c, { goal: '写A', name: 'auth', draft: true }); // 落 batch-001/task-auth
+    // 手工在另一批次建同名目录（CLI 新建会拼 hash 避开，手工建的可能撞）
+    mkdirSync(join(c.queueDir, 'batch-002', 'task-auth'), { recursive: true });
+    writeFileSync(join(c.queueDir, 'batch-002', 'task-auth', 'SPEC.md'), '---\ngoal: x\noutput: docs/\nacceptance:\n  artifacts: []\n---\nx', 'utf-8');
     const queue = scanQueue(c.queueDir, c.metaDir);
     const issues = detectDuplicateNames(queue);
-    expect(issues.length).toBeGreaterThan(0);
-    expect(issues[0].message).toContain('重复');
+    expect(issues.some((i) => i.level === 'blocking')).toBe(true);
   });
 
   it('全拼 slug 不重复 → 无命名重复信号', () => {
