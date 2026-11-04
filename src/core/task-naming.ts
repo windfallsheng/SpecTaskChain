@@ -22,6 +22,11 @@ export function hasNonAscii(s: string): boolean {
   return /[^\x00-\x7F]/.test(s);
 }
 
+/** 目录名剥仪式前缀得语义 slug：'01-task-xiewendang' → 'xiewendang'；老目录 '01-xiewendang' 同样兼容（序号 + task- 前缀一并剥） */
+export function slugFromDir(id: string): string {
+  return id.replace(/^\d+-(task-)?/, '');
+}
+
 /**
  * 中英文名称转 slug：
  * - 拉丁片段（英文/数字）优先：'用户Auth模块' → 'auth'

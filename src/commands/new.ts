@@ -75,7 +75,10 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   // goal 提不出语义时用任务类型键兜底（doc/script/data…，类型即任务形态）——绝不落 'task' 哑名
   const goalSlug = toSlug(opts.goal);
   const slug = opts.name ? toSlug(opts.name) : goalSlug === 'task' ? typeDef.name : goalSlug;
-  const id = `${seq}-${slug}`;
+  // 普通任务同 task- 前缀（参考模块 module- 前缀的效果）：目录名 = {NN}-task-{slug}，
+  // 一眼区分于模块目录；已带前缀不叠加（--name 'task-01' 直接作 slug）；序号永远打头保排序与全局递增
+  const taskSlug = slug.startsWith('task-') ? slug : `task-${slug}`;
+  const id = `${seq}-${taskSlug}`;
   const shownName = opts.name ? displayName(opts.name, slug) : undefined;
 
   if (opts.group) {

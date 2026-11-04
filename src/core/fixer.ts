@@ -11,6 +11,7 @@ import { dirname, join } from 'path';
 import type { TaskSpec } from './task-spec';
 import type { TaskTypeDefinition } from './task-type';
 import { defaultRoleForType } from './task-role';
+import { slugFromDir } from './task-naming';
 
 /** 修复项：kind 决定行级编辑方式，after 是完整的前端块/行（预览与落盘共用） */
 export interface FixItem {
@@ -24,7 +25,7 @@ export interface FixItem {
 /** 按类型推断产出路径：{outputDir}{slug}.md；代码类型/data 不猜（扩展名不可断定） */
 export function inferOutputPath(spec: TaskSpec, typeDef: TaskTypeDefinition): string {
   if (typeDef.code || typeDef.name === 'data') return '';
-  const slug = spec.id.replace(/^\d+-/, '') || spec.id;
+  const slug = slugFromDir(spec.id) || spec.id;
   return `${typeDef.outputDir}${slug}.md`;
 }
 

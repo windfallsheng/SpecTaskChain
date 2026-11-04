@@ -5,7 +5,7 @@ import { isAbsolute, resolve, basename, dirname, join } from 'path';
 import { QueueScan } from './queue';
 import { TaskSpec, validateRequired } from './task-spec';
 import { extractReferences } from './references';
-import { isPlaceholderSlug, hasNonAscii } from './task-naming';
+import { isPlaceholderSlug, hasNonAscii, slugFromDir } from './task-naming';
 import { resolveTaskRole, listBuiltinRoles, resolveEffectiveRole } from './task-role';
 
 /** 从任务目录上溯找 .taskchain（metaDir）：任务在 queue/{批次}/{任务}/ 或 queue/{批次}/{模块}/{子任务}/ 下 */
@@ -171,7 +171,7 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyI
     issues.push({ level: 'blocking', taskId: spec.id, message: `引用的文件/图片不存在（${names}）——执行时 AI 读不到真实内容，先补文件或改引用` });
   }
   // —— 命名体检：目录名是机器身份，可读性不能被占位符/非 ASCII 吃掉 ——
-  const dirSlug = spec.id.replace(/^\d+-/, '');
+  const dirSlug = slugFromDir(spec.id);
   if (isPlaceholderSlug(dirSlug)) {
     issues.push({ level: 'suggest', taskId: spec.id, message: `目录名「${dirSlug}」是随机占位（t+时间戳），可读性差——建议用 --name 重建，或在 frontmatter 补 name 显示名` });
   }
@@ -283,7 +283,7 @@ export function detectDuplicateNames(queue: QueueScan): ClarifyIssue[] {
   const check = (entries: { id: string }[], layer: string) => {
     const seen = new Map<string, string>();
     for (const e of entries) {
-      const slug = e.id.replace(/^\d+-/, '');
+      const slug = slugFromDir(e.id);
       if (seen.has(slug)) {
         issues.push({ level: 'suggest', taskId: e.id, message: `${layer} slug「${slug}」与「${seen.get(slug)}」重复——建议区分名字，清单浏览时才能一眼分清` });
       } else {

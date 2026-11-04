@@ -65,8 +65,8 @@ describe('任务元数据：created-at / priority / tags / estimate', () => {
   it('new 落盘 created-at 与可选元数据', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-meta-'));
     const out = newCommand(cfg(root), { goal: '写迁移手册', type: 'doc', priority: 'P2', tags: ['迁移', '文档'], estimate: 3, draft: true });
-    expect(out).toContain('01-xieqianyishouce');
-    const specRaw = readFileSync(join(root, 'queue', 'batch-001', '01-xieqianyishouce', 'SPEC.md'), 'utf-8');
+    expect(out).toContain('01-task-xieqianyishouce');
+    const specRaw = readFileSync(join(root, 'queue', 'batch-001', '01-task-xieqianyishouce', 'SPEC.md'), 'utf-8');
     expect(specRaw).toContain(`created-at: ${new Date().toISOString().slice(0, 10)}`);
     expect(specRaw).toContain('priority: P2');
     expect(specRaw).toContain('tags:\n  - 迁移\n  - 文档');

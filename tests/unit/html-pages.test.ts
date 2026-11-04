@@ -95,7 +95,7 @@ describe('REPORT.html：复盘状态分布与执行记录', () => {
     expect(html).toContain('任务总数');
     expect(html).toContain('完成');
     expect(html).toContain('执行记录');
-    expect(html).toContain('01-xieqianyishouce');
+    expect(html).toContain('01-task-xieqianyishouce');
   });
 
   it('reportCommand --html 输出路径文案', () => {
