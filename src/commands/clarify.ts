@@ -6,7 +6,8 @@ import { TaskQConfig } from '../core/config';
 import { scanQueue, latestBatchId } from '../core/queue';
 import { readSpec, parseFrontmatter, buildSpec } from '../core/task-spec';
 import { resolveTaskType } from '../core/task-type';
-import { buildClarifyAssessment, dispatchAssessment, assessmentNotice } from '../core/assessment';
+import { readBatchConfig } from '../core/batch-config';
+import { buildClarifyAssessment, dispatchAssessment, assessmentNotice, resolveReportSwitch } from '../core/assessment';
 import { computeFixes } from '../core/fixer';
 import {
   detectTaskIssues,
@@ -22,6 +23,8 @@ export interface ClarifyOptions {
   file?: string;    // 直接指文件（手动写场景：宿主 AI 消解「上面的内容」后传入）
   chain?: boolean;  // 建链前查：只查链级硬伤（依赖悬空/产出冲突/模块约束/命名重复/循环依赖），不逐任务三必填
   html?: boolean;   // 体检报告 HTML 化（queue/CLARIFY.html，三档红黄灰分组）
+  noReport?: boolean;   // 报告开关（临时）：当次不生成评估报告
+  forceReport?: boolean; // 报告开关（临时）：当次强制生成（覆盖批次配置 reports: false）
 }
 
 export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
@@ -66,11 +69,21 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
       for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot));
     }
     // 全量体检 → 澄清评估报告后台生成（不阻断终端输出）：每任务评估 + 总体评级，MD+HTML 落批次 overview/reports/
+    // 报告开关四级链：CLI 临时（--no-report/--report）> 任务级（SPEC.md reports: false 筛掉）> 批次级（config/BATCH.yaml reports）> 系统默认（生成）
     const batchId = latestBatchId(queue.batches) || 'tasks';
     const allTasks = [...queue.tasks, ...queue.modules.flatMap((m) => m.subtasks)];
-    const report = buildClarifyAssessment(batchId, allTasks, issues);
-    dispatchAssessment(cfg, report);
-    clarifyNotice = assessmentNotice(cfg.queueDir, report);
+    const reportable = allTasks.filter((t) => t.reports !== false);
+    const batchCfg = readBatchConfig(join(cfg.queueDir, batchId));
+    const sw = resolveReportSwitch(batchCfg, opts);
+    if (!reportable.length) {
+      clarifyNotice = '📄 评估报告已跳过：全部任务 SPEC.md 设了 reports: false（删掉该行即恢复参与）';
+    } else if (!sw.enabled) {
+      clarifyNotice = `📄 评估报告已跳过：${sw.reason}`;
+    } else {
+      const report = buildClarifyAssessment(batchId, reportable, issues);
+      dispatchAssessment(cfg, report);
+      clarifyNotice = assessmentNotice(cfg.queueDir, report);
+    }
     // 全量体检后亮修复提示（A 档机械修）
     const fixable = allTasks.reduce((n, t) => n + computeFixes(t, resolveTaskType(cfg.metaDir, t.type)).length, 0);
     fixHint = fixable ? `🔧 可自动修复 ${fixable} 处：taskq fix（--yes 应用 / --dry-run 预览）` : '';

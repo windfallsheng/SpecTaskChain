@@ -66,6 +66,7 @@ tags:                      # 标签（自由关键词，跨批次按主题筛）
   - Q4
 estimate: 8                # 预估工时（小时）
 role: security-reviewer    # 执行角色（type 管形态，role 管专业；见「执行角色」章）
+reports: false             # 报告开关（任务级）：false = 本任务退出澄清/完成评估报告（缺省参与）
 goal: ...
 output: ...
 acceptance: ...
@@ -94,11 +95,13 @@ version: 1           # schema 版本戳（升级维护用）
 batch-size: 3        # 每批领取任务数（一次 execute 领几个）
 max-attempts: 3      # 任务失败重试上限（验收不通过累计达上限即 failed）
 skip-draft: false    # 是否跳过 draft 拦停（true = 未澄清也照跑）
+reports: true        # 是否生成评估报告（澄清 CLARIFY_REPORT + 完成 DONE_REPORT；false = 本批次整体关闭）
 ```
 
 - **落盘位置**：`config/BATCH.yaml`（批次内 config/ 目录，与用户任务/模块内容分开；未来扩展别的配置文件都往这里放）。旧版本（≤0.2.23）在批次根目录的 `BATCH.yaml` 读侧兼容，`taskq new`/`init` 时自动迁移到 config/（内容原样搬入，校验一致后移除旧文件）。
 - **自动生成**：建批次（`taskq new` 首个批次 / `init`）自动落盘，注释详尽；已存在绝不覆盖（用户手改是最高优先级资产）。
 - **优先级链（每项独立生效）**：CLI 临时指令 > 批次配置 > 系统默认——`taskq execute --batch-size 2` 只当次生效不写回；`taskq ask "一次领 5 个"` 同理。
+- **报告开关四级链**：`reports` 项多一层任务级覆盖——CLI 临时（`--no-report` 关闭一次 / `--report` 强制出一次）> 任务级（SPEC.md `reports: false` 任务自己退出报告）> 批次级（本文件 `reports: false` 批次整体关闭）> 系统默认（true 会生成）。
 - **三级兜底**：文件缺失 → 全默认；内容损坏 → 备份 BATCH.yaml.bak + 告警 + 全默认；单字段异常（负数/非数/类型错）→ 只回落该字段，其余照常生效。
 - **升级维护**：只加键不改语义；旧文件缺新键自动取系统默认，未知键忽略，双向向前兼容，无需迁移脚本。
 
@@ -113,6 +116,7 @@ skip-draft: false    # 是否跳过 draft 拦停（true = 未澄清也照跑）
 
 - **命名区分**：CLARIFY_REPORT vs DONE_REPORT 前缀互不混淆；同批同日多次生成覆盖为最新状态（报告反映当下，不留历史堆积）。
 - **后台生成不阻断**：报告由 detached 后台 worker 渲染写盘，主流程（澄清输出/接力总结）立即返回；worker 失败只落 `.log` 排查，绝不影响队列运转。
+- **报告开关（默认生成）**：四级链——CLI 临时（`taskq clarify/execute --no-report` 当次关闭 / `--report` 强制出一次）> 任务级（SPEC.md `reports: false` 该任务退出报告）> 批次级（config/BATCH.yaml `reports: false` 批次整体关闭）> 系统默认（true）。关闭时会提示一句原因；全部任务都退出的批次不生成空报告。
 - **防噪音**：完成报告只在「真有过执行」（有 done/failed 记录）时生成，空队列或从未执行不产生空转报告。
 - **总体评级**：百分制（A 85-100 / B 70-84 / C 55-69 / D <55）；澄清按问题等级扣分（阻塞 15 / 执行风险 10 / 建议 5 / 待定 3），完成按完成率计分、失败任务点亮。
 - **保留目录**：`overview/` 是批次元信息目录（报告落盘地），队列扫描器直接跳过，不会误当成模块报「缺公共约束」；隐藏目录（`.taskchain` 等）同样跳过。

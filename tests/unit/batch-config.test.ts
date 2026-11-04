@@ -34,11 +34,18 @@ ${extra.draft ? 'draft: true\n' : ''}acceptance:
 }
 
 describe('parseBatchConfig：字段级兜底', () => {
-  it('正常解析：三键全生效', () => {
-    const c = parseBatchConfig('version: 1\nbatch-size: 5\nmax-attempts: 2\nskip-draft: true\n');
+  it('正常解析：四键全生效', () => {
+    const c = parseBatchConfig('version: 1\nbatch-size: 5\nmax-attempts: 2\nskip-draft: true\nreports: false\n');
     expect(c['batch-size']).toBe(5);
     expect(c['max-attempts']).toBe(2);
     expect(c['skip-draft']).toBe(true);
+    expect(c.reports).toBe(false);
+  });
+
+  it('reports 缺省/非布尔 → 回落系统默认 true（默认会生成报告）', () => {
+    expect(parseBatchConfig('batch-size: 2\n').reports).toBe(true);
+    expect(parseBatchConfig('reports: 随便写的\n').reports).toBe(true);
+    expect(parseBatchConfig("reports: 'true'\n").reports).toBe(true);
   });
 
   it('单个字段异常只回落该字段，其余照常生效（用户手改一半也要尊重）', () => {
@@ -80,14 +87,16 @@ describe('readBatchConfig / locateBatchConfig：文件级兜底', () => {
 });
 
 describe('renderBatchConfig / ensureBatchConfig：模板与幂等', () => {
-  it('模板含 version 戳 + 三键 + 详细注释', () => {
+  it('模板含 version 戳 + 四键 + 详细注释', () => {
     const t = renderBatchConfig();
     expect(t).toContain(`version: ${BATCH_CONFIG_VERSION}`);
     expect(t).toContain('batch-size: 3');
     expect(t).toContain('max-attempts: 3');
     expect(t).toContain('skip-draft: false');
+    expect(t).toContain('reports: true');
     expect(t).toContain('优先级链'); // 注释讲清覆盖关系
     expect(t).toContain('taskq execute --batch-size'); // 注释讲清临时覆盖命令
+    expect(t).toContain('--no-report'); // 注释讲清报告开关的临时覆盖
   });
 
   it('overrides 定制首版配置', () => {

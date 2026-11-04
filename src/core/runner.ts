@@ -6,7 +6,7 @@ import { join } from 'path';
 import { TaskQConfig, readState, writeState, TaskRunState } from './config';
 import { scanQueue, buildExecutionSequence, filterExecutionSequence, findNextPending, selectBatch, latestBatchId, DOING_TIMEOUT_MS, ExecutableTask, BatchInfo } from './queue';
 import { readBatchConfig, SYSTEM_BATCH_DEFAULTS, BatchConfig } from './batch-config';
-import { buildDoneAssessment, dispatchAssessment, assessmentNotice } from './assessment';
+import { buildDoneAssessment, dispatchAssessment, assessmentNotice, resolveReportSwitch } from './assessment';
 import { resolveTaskType } from './task-type';
 import { resolveReferences } from './references';
 import { renderEffectiveRoleSegment, resolveEffectiveRole } from './task-role';
@@ -172,7 +172,7 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
  * - failed 任务 → 需人工介入（协议拦截，不无限重试）
  * - 有 doing 任务未完成（未超时）→ 有执行者在干活，不重复领取
  */
-export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?: string; task?: string; module?: string } = {}): NextTaskInfo {
+export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?: string; task?: string; module?: string; noReport?: boolean; forceReport?: boolean } = {}): NextTaskInfo {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   const batchCfg = effectiveBatchConfig(cfg, queue.batches, opts.batch);
   // 批次聚焦：缺省 = 最新批次（新批次插队先跑）；--batch batch-NNN 指定老批次；--batch all 全批次
@@ -212,7 +212,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
         summary: `⏳ 任务「${doing.spec.id}」正在执行中（${at} 领取）。执行者完成后会调 taskq done 登记；若执行者已中断，超过 24 小时自动重拾（或手动把 queue/.taskchain/state.json 中该任务状态改为 todo）`,
       };
     }
-    return { task: null as any, prompt: '', exitCode: 0, summary: `✅ 队列已清空：${sequence.length} 个任务全部完成${doneReportNotice(cfg, sequence, state, queue.batches, opts.batch)}` };
+    return { task: null as any, prompt: '', exitCode: 0, summary: `✅ 队列已清空：${sequence.length} 个任务全部完成${doneReportNotice(cfg, sequence, state, queue.batches, opts.batch, { noReport: opts.noReport, forceReport: opts.forceReport })}` };
   }
   const st = state[next.spec.id] || { status: 'todo', attempts: 0 };
   if (st.status === 'failed') {
@@ -308,16 +308,22 @@ function effectiveBatchConfig(cfg: TaskQConfig, batches: BatchInfo[], batch?: st
 /**
  * 队列清空时的完成评估报告（后台生成，不阻断）——返回追加到 summary 的提示行。
  * 只在「真有过执行」时生成（有 done/failed 记录）；空队列或从未执行过不生成，避免空转噪音。
+ * 报告开关四级链：CLI 临时（--no-report/--report）> 任务级（SPEC.md reports: false 筛掉）> 批次级（config/BATCH.yaml reports）> 系统默认（生成）
  */
-function doneReportNotice(cfg: TaskQConfig, sequence: ExecutableTask[], state: Record<string, TaskRunState>, batches: BatchInfo[], batch?: string): string {
+function doneReportNotice(cfg: TaskQConfig, sequence: ExecutableTask[], state: Record<string, TaskRunState>, batches: BatchInfo[], batch?: string, reportOpts: { noReport?: boolean; forceReport?: boolean } = {}): string {
   if (!sequence.length) return '';
-  const hasExecuted = sequence.some((e) => {
-    const st = state[e.spec.id];
+  const reportable = sequence.filter((e) => e.spec.reports !== false).map((e) => e.spec);
+  if (!reportable.length) return '\n📄 完成评估报告已跳过：全部任务 SPEC.md 设了 reports: false（删掉该行即恢复参与）';
+  const hasExecuted = reportable.some((t) => {
+    const st = state[t.id];
     return st?.status === 'done' || st?.status === 'failed';
   });
   if (!hasExecuted) return '';
   const batchId = batch && batch !== 'all' ? batch : latestBatchId(batches) || 'tasks';
-  const report = buildDoneAssessment(batchId, sequence.map((e) => e.spec), state);
+  const batchCfg = readBatchConfig(join(cfg.queueDir, batchId));
+  const sw = resolveReportSwitch(batchCfg, reportOpts);
+  if (!sw.enabled) return `\n📄 完成评估报告已跳过：${sw.reason}`;
+  const report = buildDoneAssessment(batchId, reportable, state);
   dispatchAssessment(cfg, report);
   return `\n${assessmentNotice(cfg.queueDir, report)}`;
 }
@@ -331,7 +337,7 @@ export interface BatchRelayResult {
 }
 
 /** 领取一批任务（默认 3 个）：按执行序列取连续未完成任务，批内逐个渲染 prompt + 占位 doing */
-export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?: number; skipDraft?: boolean; task?: string; module?: string } = {}): BatchRelayResult {
+export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?: number; skipDraft?: boolean; task?: string; module?: string; noReport?: boolean; forceReport?: boolean } = {}): BatchRelayResult {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   const batchCfg = effectiveBatchConfig(cfg, queue.batches, opts.batch);
   const view = selectBatch(queue, opts.batch);
@@ -391,7 +397,7 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
 
   if (!taken.length) {
     if (stop) return { tasks: [], prompts: [], exitCode: 12, summary: stop };
-    return { tasks: [], prompts: [], exitCode: 0, summary: `✅ 队列已清空：${sequence.length} 个任务全部完成${doneReportNotice(cfg, sequence, state, queue.batches, opts.batch)}` };
+    return { tasks: [], prompts: [], exitCode: 0, summary: `✅ 队列已清空：${sequence.length} 个任务全部完成${doneReportNotice(cfg, sequence, state, queue.batches, opts.batch, { noReport: opts.noReport, forceReport: opts.forceReport })}` };
   }
 
   const prompts = taken.map((t) => buildTaskPrompt(t, cfg.metaDir, cfg.projectRoot));

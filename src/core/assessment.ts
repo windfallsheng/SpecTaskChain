@@ -329,3 +329,25 @@ export function assessmentNotice(queueDir: string, report: AssessmentReport): st
   const base = reportBaseName(report.kind, report.batchId, report.generatedAt);
   return `📝 ${report.kind === 'clarify' ? '澄清' : '完成'}评估报告后台生成中 → ${join(reportDir(queueDir, report.batchId), base)}.md/.html`;
 }
+
+// ============================================================
+// 报告开关判定（纯函数，便于测试与两处调用共用）
+// ============================================================
+
+/**
+ * 报告生成开关（四级优先级链，每项独立生效）：
+ *   CLI 临时指令（--no-report / --report）> 批次配置（config/BATCH.yaml reports）> 系统默认（true）
+ * 任务级（SPEC.md reports: false）不在这里判——由调用处先把该任务筛掉。
+ * 返回 enabled + 关闭原因（enabled 时 reason 为空，不用读）。
+ */
+export function resolveReportSwitch(
+  batchCfg: { reports?: boolean },
+  opts: { noReport?: boolean; forceReport?: boolean },
+): { enabled: boolean; reason: string } {
+  if (opts.noReport) return { enabled: false, reason: 'CLI --no-report 临时关闭' };
+  if (opts.forceReport) return { enabled: true, reason: '' };
+  if (batchCfg.reports === false) {
+    return { enabled: false, reason: '批次配置 config/BATCH.yaml 设了 reports: false（临时出一次：--report）' };
+  }
+  return { enabled: true, reason: '' };
+}

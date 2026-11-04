@@ -76,7 +76,7 @@ taskq new <描述> [--name 目录名] [--type 类型] [--group 模块名] [--dra
 随叫随到的体检（详见 [clarify.md](clarify.md)）。
 
 ```
-taskq clarify [--task 任务ID] [--file SPEC路径] [--chain] [--html]
+taskq clarify [--task 任务ID] [--file SPEC路径] [--chain] [--html] [--no-report] [--report]
 ```
 
 | 参数 | 说明 |
@@ -85,6 +85,7 @@ taskq clarify [--task 任务ID] [--file SPEC路径] [--chain] [--html]
 | `--file <path>` | 体检任意 SPEC.md 文件（未入队也行） |
 | `--chain` | 链级体检（建链查）：依赖悬空 + 产出冲突 + 模块约束 + 命名重复 + 循环依赖——只查链执行必翻车的硬伤，不逐任务报三必填（建链前任务可能还没写完） |
 | `--html` | 体检报告可视化：queue/CLARIFY.html（三档红黄灰分组卡片） |
+| `--no-report` / `--report` | 报告开关（临时）：本次不生成澄清评估报告 / 强制生成（覆盖批次配置 `reports: false`）；缺省走配置链 |
 | （无参数） | 全队列体检（翻车查）：链级硬伤 + 各任务三必填全量；结束后后台生成澄清评估报告（MD+HTML 落批次 overview/reports/，不阻断终端输出） |
 
 机械项（补 output/acceptance 骨架/role/摘 draft）不用手改：尾部提示里 `taskq fix --yes` 一处搞定。
@@ -111,10 +112,11 @@ taskq fix [--task 任务ID] [--yes] [--dry-run]
 无人值守接力执行。输出第一个未完成任务的完整执行 prompt，**通过退出码与宿主 AI 对话**：
 
 ```
-taskq run [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
+taskq run [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID] [--no-report] [--report]
 ```
 
 - `--task ID` / `--module 模块ID`：定向执行（只跑单任务或单模块全部子任务），无匹配时明确报错不悄悄跑全量。
+- `--no-report` / `--report`：报告开关（临时）——本次不生成完成评估报告 / 强制生成（覆盖批次配置 `reports: false`）。报告默认生成；长期开关见 `config/BATCH.yaml` 的 `reports`（批次级）与 SPEC.md 的 `reports: false`（任务级退出）。
 
 | 退出码 | 含义 | 后续动作 |
 | :--- | :--- | :--- |
@@ -129,7 +131,7 @@ taskq run [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
 批次接力：一次领取 N 个任务的完整 prompt，宿主 AI 逐个开子任务执行、逐个 `done` 登记、连续取批。批内各 prompt 独立自包含（不用 subagent 也成立），拦停语义同 run。
 
 ```
-taskq execute [--batch-size N] [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
+taskq execute [--batch-size N] [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID] [--no-report] [--report]
 ```
 
 - `--batch-size N`：每批领取的任务数（默认 3）。单 prompt 有防爆限额，批总长可控。口语入口同样支持：「一次领 5 个」「批量执行三个」（阿拉伯/中文数字均可）。**批次配置可持久化默认**：批次目录 `config/BATCH.yaml` 的 `batch-size` 为本批默认，CLI 临时指令只当次生效不写回。

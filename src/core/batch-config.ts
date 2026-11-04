@@ -1,5 +1,6 @@
 // 批次配置（BATCH.yaml）：每个批次自己的「脾气」——接力执行姿势的默认值
 // 三级优先级链（每个配置项独立生效）：CLI 临时指令 > 批次配置 > 系统默认
+// 例外：reports 项多一层任务级覆盖（SPEC.md 的 reports: false 任务自己退出报告），四层 = CLI 临时 > 任务级 > 批次级 > 系统默认
 // 兜底原则：文件缺失 / 内容损坏 / 字段异常，逐项回落系统默认，绝不炸队列
 // 落盘位置：批次目录/config/BATCH.yaml（配置归 config/ 目录，与用户任务/模块内容分开；未来扩展别的配置都往这里放）
 // 兼容：≤0.2.23 的旧落盘地（批次目录根 BATCH.yaml）读侧兜底；ensureBatchConfig 时自动迁移到 config/（内容复制校验一致后移除旧文件）
@@ -12,6 +13,7 @@ export interface BatchConfig {
   'batch-size': number;    // 每批领取任务数（一次 taskq execute 领几个）
   'max-attempts': number;  // 任务失败重试上限（验收不通过累计达上限即标记 failed 停止接力）
   'skip-draft': boolean;   // 是否跳过 draft 拦停（true = 规格未澄清也照跑）
+  reports: boolean;        // 是否生成评估报告（澄清 CLARIFY_REPORT + 完成 DONE_REPORT；任务级退出用 SPEC.md reports: false）
 }
 
 /**
@@ -22,6 +24,7 @@ export const SYSTEM_BATCH_DEFAULTS: BatchConfig = {
   'batch-size': 3,
   'max-attempts': 3,
   'skip-draft': false,
+  reports: true,
 };
 
 /**
@@ -72,6 +75,7 @@ export function parseBatchConfig(text: string): BatchConfig {
     'batch-size': safePositive(raw['batch-size'], SYSTEM_BATCH_DEFAULTS['batch-size']),
     'max-attempts': safePositive(raw['max-attempts'], SYSTEM_BATCH_DEFAULTS['max-attempts']),
     'skip-draft': safeBool(raw['skip-draft'], SYSTEM_BATCH_DEFAULTS['skip-draft']),
+    reports: safeBool(raw['reports'], SYSTEM_BATCH_DEFAULTS['reports']),
   };
 }
 
@@ -131,7 +135,7 @@ export function renderBatchConfig(overrides: Partial<BatchConfig> = {}): string 
   const lines = [
     '# BATCH.yaml —— 本批次队列的「脾气」：接力执行的默认姿势',
     '# 优先级链（每项独立生效）：CLI 临时指令 > 本文件 > 系统默认',
-    '# 系统默认：batch-size=3，max-attempts=3，skip-draft=false',
+    '# 系统默认：batch-size=3，max-attempts=3，skip-draft=false，reports=true',
     '#',
     '# 升级维护：version 记录 schema 版本；升级只加键不改语义，本文件缺失的键自动取系统默认，',
     '# 无需迁移脚本——想用新默认值直接删掉对应行即可。',
@@ -151,6 +155,11 @@ export function renderBatchConfig(overrides: Partial<BatchConfig> = {}): string 
     '# 默认 false（先 clarify 澄清再跑）；本批次都是探索型任务可设 true 先跑起来。',
     '# 临时覆盖（仅当次生效）：taskq execute --skip-draft',
     `skip-draft: ${c['skip-draft']}`,
+    '#',
+    '# 是否生成评估报告（澄清 CLARIFY_REPORT + 完成 DONE_REPORT，落批次 overview/reports/）：',
+    '# true = 默认生成；false = 本批次整体关闭。个别任务退出报告（探索性任务不想进报告），在任务 SPEC.md 写 reports: false。',
+    '# 临时覆盖（仅当次生效）：taskq clarify --no-report 关闭一次 或  taskq execute --report 强制出一次',
+    `reports: ${c['reports']}`,
     '',
   ];
   return lines.join('\n');
