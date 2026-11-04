@@ -226,4 +226,17 @@ describe('queue 扫描：overview 保留目录不是模块', () => {
     expect(queue.tasks).toEqual([]);
     expect(queue.modules).toEqual([]);
   });
+
+  it('config/ 配置目录同样跳过（BATCH.yaml 落盘地不是模块）', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-ovr-'));
+    const batch = join(root, 'queue', 'batch-001');
+    const taskDir = join(batch, '01-x');
+    mkdirSync(taskDir, { recursive: true });
+    writeFileSync(join(taskDir, 'SPEC.md'), '---\ngoal: g\noutput: o\nacceptance:\n  review: r\n---\n正文\n');
+    mkdirSync(join(batch, 'config'), { recursive: true });
+    writeFileSync(join(batch, 'config', 'BATCH.yaml'), 'batch-size: 5\n');
+    const queue = scanQueue(join(root, 'queue'), join(root, 'queue', '.taskchain'));
+    expect(queue.tasks).toHaveLength(1);
+    expect(queue.modules).toEqual([]);
+  });
 });

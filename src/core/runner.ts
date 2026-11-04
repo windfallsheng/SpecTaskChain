@@ -11,7 +11,7 @@ import { resolveTaskType } from './task-type';
 import { resolveReferences } from './references';
 import { renderEffectiveRoleSegment, resolveEffectiveRole } from './task-role';
 
-/** 每任务尝试上限（失败重试，超过标记 failed 不再接力）——保留导出兼容；批次可用 BATCH.yaml 的 max-attempts 覆盖 */
+/** 每任务尝试上限（失败重试，超过标记 failed 不再接力）——保留导出兼容；批次可用 config/BATCH.yaml 的 max-attempts 覆盖 */
 export const MAX_ATTEMPTS = SYSTEM_BATCH_DEFAULTS['max-attempts'];
 
 // —— 上下文防爆（Speccore 教训：prompt 无上限必爆；截断 + 亮明原文路径，AI 按需 Read 原文）——
@@ -236,7 +236,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
       task: next,
       prompt: '',
       exitCode: 12,
-      summary: `⏸ 任务「${next.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${next.spec.id}\` 补全；或 \`taskq run --skip-draft\` 强跑（也可在批次 BATCH.yaml 设 skip-draft: true 对本批长期生效）`,
+      summary: `⏸ 任务「${next.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${next.spec.id}\` 补全；或 \`taskq run --skip-draft\` 强跑（也可在批次 config/BATCH.yaml 设 skip-draft: true 对本批长期生效）`,
     };
   }
   const prompt = buildTaskPrompt(next, cfg.metaDir, cfg.projectRoot);
@@ -296,7 +296,7 @@ export function queueSummary(cfg: TaskQConfig, opts: { batch?: string } = {}): s
 // ============================================================
 
 /**
- * 当前聚焦批次的配置（BATCH.yaml）：--batch 指定批次 / 缺省最新批次；
+ * 当前聚焦批次的配置（config/BATCH.yaml）：--batch 指定批次 / 缺省最新批次；
  * 'all' 跨批次或队列无批次目录时回落系统默认（跨批次混跑没有单一「脾气」）
  */
 function effectiveBatchConfig(cfg: TaskQConfig, batches: BatchInfo[], batch?: string): BatchConfig {
@@ -383,7 +383,7 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
       break;
     }
     if (t.spec.draft && !skipDraft) {
-      stop = `⏸ 任务「${t.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${t.spec.id}\` 补全；或 \`taskq execute --skip-draft\` 强跑（也可在批次 BATCH.yaml 设 skip-draft: true 对本批长期生效）`;
+      stop = `⏸ 任务「${t.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${t.spec.id}\` 补全；或 \`taskq execute --skip-draft\` 强跑（也可在批次 config/BATCH.yaml 设 skip-draft: true 对本批长期生效）`;
       break;
     }
     taken.push(t);

@@ -1,7 +1,9 @@
 // 批次配置（BATCH.yaml）：每个批次自己的「脾气」——接力执行姿势的默认值
 // 三级优先级链（每个配置项独立生效）：CLI 临时指令 > 批次配置 > 系统默认
 // 兜底原则：文件缺失 / 内容损坏 / 字段异常，逐项回落系统默认，绝不炸队列
-import { existsSync, readFileSync, writeFileSync, copyFileSync } from 'fs';
+// 落盘位置：批次目录/config/BATCH.yaml（配置归 config/ 目录，与用户任务/模块内容分开；未来扩展别的配置都往这里放）
+// 兼容：≤0.2.23 的旧落盘地（批次目录根 BATCH.yaml）读侧兜底；ensureBatchConfig 时自动迁移到 config/（内容复制校验一致后移除旧文件）
+import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { parseSimpleYaml } from './task-spec';
 
@@ -29,8 +31,21 @@ export const SYSTEM_BATCH_DEFAULTS: BatchConfig = {
  */
 export const BATCH_CONFIG_VERSION = 1;
 
-/** 批次配置文件名（批次目录根下，与 BATCH.md 描述文件并列） */
+/** 批次配置文件名 */
 export const BATCH_CONFIG_FILE = 'BATCH.yaml';
+
+/** 批次配置目录（批次目录内，与用户任务/模块内容分开；保留目录——队列扫描器跳过） */
+export const BATCH_CONFIG_DIR = 'config';
+
+/** 新位置：config/BATCH.yaml（v0.2.24+ 统一落盘地） */
+function configPath(batchDir: string): string {
+  return join(batchDir, BATCH_CONFIG_DIR, BATCH_CONFIG_FILE);
+}
+
+/** 旧位置：批次根 BATCH.yaml（≤0.2.23 落盘地，读侧兜底兼容） */
+function legacyPath(batchDir: string): string {
+  return join(batchDir, BATCH_CONFIG_FILE);
+}
 
 /** 数字字段兜底：有限数且 ≥1 才认（0/负数/非数 → 系统默认） */
 function safePositive(v: unknown, fallback: number): number {
@@ -61,13 +76,22 @@ export function parseBatchConfig(text: string): BatchConfig {
 }
 
 /**
- * 读批次目录下的 BATCH.yaml。
+ * 读批次配置：config/BATCH.yaml 优先，旧位置（批次根 BATCH.yaml）兜底——老批次无缝兼容。
  * 文件缺失 → 系统默认（无配置就是默认姿势，不告警——建批次时本就自动生成，缺了说明被手删，静默回落）；
  * 内容损坏 → 备份原文件 + stderr 告警，按系统默认继续（学 state.json 的处理：备份比覆盖诚实，配置可重写）。
  */
 export function readBatchConfig(batchDir: string): BatchConfig {
-  const path = join(batchDir, BATCH_CONFIG_FILE);
-  if (!existsSync(path)) return { ...SYSTEM_BATCH_DEFAULTS };
+  const path = configPath(batchDir);
+  if (!existsSync(path)) {
+    const legacy = legacyPath(batchDir);
+    if (!existsSync(legacy)) return { ...SYSTEM_BATCH_DEFAULTS };
+    return readOne(legacy);
+  }
+  return readOne(path);
+}
+
+/** 单文件读取 + 损坏兜底（备份 + 告警 + 回落默认） */
+function readOne(path: string): BatchConfig {
   try {
     return parseBatchConfig(readFileSync(path, 'utf-8'));
   } catch {
@@ -88,7 +112,10 @@ export function readBatchConfig(batchDir: string): BatchConfig {
 export function locateBatchConfig(startDir: string, queueDir: string): BatchConfig {
   let cur = startDir;
   while (cur === queueDir || cur.startsWith(queueDir + '/')) {
-    if (existsSync(join(cur, BATCH_CONFIG_FILE))) return readBatchConfig(cur);
+    // 每层查两个位置：config/BATCH.yaml（新）+ BATCH.yaml（旧兼容）
+    if (existsSync(join(cur, BATCH_CONFIG_DIR, BATCH_CONFIG_FILE)) || existsSync(join(cur, BATCH_CONFIG_FILE))) {
+      return readBatchConfig(cur);
+    }
     if (cur === queueDir) break;
     cur = dirname(cur);
   }
@@ -130,12 +157,34 @@ export function renderBatchConfig(overrides: Partial<BatchConfig> = {}): string 
 }
 
 /**
- * 建批次时落盘 BATCH.yaml（幂等：已存在绝不覆盖——用户手改过的配置是最高优先级资产）。
- * 返回是否实际写入（false = 已存在跳过，true = 新生成）。
+ * 建批次时落盘 config/BATCH.yaml，三态：
+ *   config/ 已有 → 跳过（false，用户手改过的配置是最高优先级资产）；
+ *   旧位置（批次根 BATCH.yaml）有 → 迁移：内容复制到 config/，校验一致后移除旧文件（true）；
+ *   都没有 → 写默认模板（true）。
  */
 export function ensureBatchConfig(batchDir: string): boolean {
-  const path = join(batchDir, BATCH_CONFIG_FILE);
+  const path = configPath(batchDir);
   if (existsSync(path)) return false;
+  const legacy = legacyPath(batchDir);
+  if (existsSync(legacy)) {
+    // 迁移旧落盘地（≤0.2.23）：内容原样搬入 config/，复制校验一致后才移除旧文件
+    try {
+      const content = readFileSync(legacy, 'utf-8');
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content, 'utf-8');
+      if (readFileSync(path, 'utf-8') === content) {
+        try {
+          unlinkSync(legacy);
+        } catch {
+          // 移除失败无碍：读仍 config/ 优先，旧文件成冗余不产生副作用
+        }
+      }
+      return true;
+    } catch {
+      return false; // 迁移失败：旧文件保留（读兜底仍生效），下轮再试
+    }
+  }
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, renderBatchConfig(), 'utf-8');
   return true;
 }

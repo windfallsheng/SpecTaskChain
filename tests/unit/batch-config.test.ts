@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { TaskQConfig, ensureStructure } from '../../src/core/config';
-import { parseBatchConfig, readBatchConfig, locateBatchConfig, renderBatchConfig, ensureBatchConfig, SYSTEM_BATCH_DEFAULTS, BATCH_CONFIG_VERSION, BATCH_CONFIG_FILE } from '../../src/core/batch-config';
+import { parseBatchConfig, readBatchConfig, locateBatchConfig, renderBatchConfig, ensureBatchConfig, SYSTEM_BATCH_DEFAULTS, BATCH_CONFIG_VERSION, BATCH_CONFIG_FILE, BATCH_CONFIG_DIR } from '../../src/core/batch-config';
 import { batchRelay, relayNext } from '../../src/core/runner';
 import { doneCommand } from '../../src/commands/done';
 
@@ -100,10 +100,35 @@ describe('renderBatchConfig / ensureBatchConfig：模板与幂等', () => {
     const cfg = makeCfg();
     const batchDir = join(cfg.queueDir, 'batch-001');
     mkdirSync(batchDir, { recursive: true });
-    expect(ensureBatchConfig(batchDir)).toBe(true); // 首次生成
-    writeFileSync(join(batchDir, BATCH_CONFIG_FILE), 'batch-size: 11\n', 'utf-8'); // 用户手改
+    expect(ensureBatchConfig(batchDir)).toBe(true); // 首次生成 → config/BATCH.yaml
+    const cfgPath = join(batchDir, BATCH_CONFIG_DIR, BATCH_CONFIG_FILE);
+    expect(existsSync(cfgPath)).toBe(true);
+    writeFileSync(cfgPath, 'batch-size: 11\n', 'utf-8'); // 用户手改
     expect(ensureBatchConfig(batchDir)).toBe(false); // 二次调用跳过
-    expect(readFileSync(join(batchDir, BATCH_CONFIG_FILE), 'utf-8')).toBe('batch-size: 11\n'); // 手改保留
+    expect(readFileSync(cfgPath, 'utf-8')).toBe('batch-size: 11\n'); // 手改保留
+  });
+
+  it('ensureBatchConfig 迁移：旧位置（批次根 BATCH.yaml）内容原样搬入 config/，旧文件移除', () => {
+    const cfg = makeCfg();
+    const batchDir = join(cfg.queueDir, 'batch-001');
+    mkdirSync(batchDir, { recursive: true });
+    // 旧版本（≤0.2.23）的落盘地：批次根 BATCH.yaml，用户手改过
+    writeFileSync(join(batchDir, BATCH_CONFIG_FILE), 'batch-size: 13\nskip-draft: true\n', 'utf-8');
+    expect(ensureBatchConfig(batchDir)).toBe(true); // 迁移执行
+    const cfgPath = join(batchDir, BATCH_CONFIG_DIR, BATCH_CONFIG_FILE);
+    expect(readFileSync(cfgPath, 'utf-8')).toBe('batch-size: 13\nskip-draft: true\n'); // 内容原样
+    expect(existsSync(join(batchDir, BATCH_CONFIG_FILE))).toBe(false); // 旧文件已移除
+    expect(readBatchConfig(batchDir)['batch-size']).toBe(13); // 读新位置生效
+  });
+
+  it('双位置并存 → config/ 优先', () => {
+    const cfg = makeCfg();
+    const batchDir = join(cfg.queueDir, 'batch-001');
+    mkdirSync(join(batchDir, BATCH_CONFIG_DIR), { recursive: true });
+    writeFileSync(join(batchDir, BATCH_CONFIG_DIR, BATCH_CONFIG_FILE), 'batch-size: 3\n', 'utf-8');
+    writeFileSync(join(batchDir, BATCH_CONFIG_FILE), 'batch-size: 17\n', 'utf-8'); // 旧位置残留
+    expect(readBatchConfig(batchDir)['batch-size']).toBe(3); // 新位置胜出
+    expect(locateBatchConfig(join(batchDir, '01-x'), cfg.queueDir)['batch-size']).toBe(3);
   });
 });
 
@@ -190,17 +215,21 @@ describe('done 验收上限：max-attempts 配置生效', () => {
 });
 
 describe('ensureStructure 建批次自动落配置', () => {
-  it('新队列 init 后 batch-001 自带 BATCH.yaml', () => {
+  it('新队列 init 后 batch-001 自带 config/BATCH.yaml', () => {
     const cfg = makeCfg();
     ensureStructure(cfg);
-    expect(existsSync(join(cfg.queueDir, 'batch-001', BATCH_CONFIG_FILE))).toBe(true);
+    expect(existsSync(join(cfg.queueDir, 'batch-001', BATCH_CONFIG_DIR, BATCH_CONFIG_FILE))).toBe(true);
   });
 
-  it('已有批次缺配置 → 幂等补齐；已有配置 → 不动', () => {
+  it('已有批次旧位置配置 → 迁移到 config/；已有新位置 → 不动', () => {
     const cfg = makeCfg();
     mkdirSync(join(cfg.queueDir, 'batch-001'), { recursive: true });
     writeFileSync(join(cfg.queueDir, 'batch-001', BATCH_CONFIG_FILE), 'batch-size: 21\n', 'utf-8');
     ensureStructure(cfg);
-    expect(readFileSync(join(cfg.queueDir, 'batch-001', BATCH_CONFIG_FILE), 'utf-8')).toBe('batch-size: 21\n');
+    const cfgPath = join(cfg.queueDir, 'batch-001', BATCH_CONFIG_DIR, BATCH_CONFIG_FILE);
+    expect(readFileSync(cfgPath, 'utf-8')).toBe('batch-size: 21\n'); // 迁移后内容不变
+    expect(existsSync(join(cfg.queueDir, 'batch-001', BATCH_CONFIG_FILE))).toBe(false); // 旧文件移除
+    ensureStructure(cfg); // 再跑不动
+    expect(readFileSync(cfgPath, 'utf-8')).toBe('batch-size: 21\n');
   });
 });

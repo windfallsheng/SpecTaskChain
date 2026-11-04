@@ -132,12 +132,12 @@ taskq run [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
 taskq execute [--batch-size N] [--skip-draft] [--batch 批次|all] [--task ID] [--module 模块ID]
 ```
 
-- `--batch-size N`：每批领取的任务数（默认 3）。单 prompt 有防爆限额，批总长可控。口语入口同样支持：「一次领 5 个」「批量执行三个」（阿拉伯/中文数字均可）。**批次配置可持久化默认**：批次目录 `BATCH.yaml` 的 `batch-size` 为本批默认，CLI 临时指令只当次生效不写回。
+- `--batch-size N`：每批领取的任务数（默认 3）。单 prompt 有防爆限额，批总长可控。口语入口同样支持：「一次领 5 个」「批量执行三个」（阿拉伯/中文数字均可）。**批次配置可持久化默认**：批次目录 `config/BATCH.yaml` 的 `batch-size` 为本批默认，CLI 临时指令只当次生效不写回。
 - `--skip-draft`：跳过 draft 拦停（批次配置 `skip-draft: true` 可对本批长期生效）。
 - `--batch 批次|all`：聚焦指定批次或全队列（默认最新批次；批次配置按聚焦批次读取，`all` 时用系统默认）。
 - `--task ID` / `--module 模块ID`：定向执行（同 run）。
 - 批内首个任务占位 doing 后即拦停：同批内已有任务处于 doing（上一棒未登记）时，先停——账本只能有一个执行者。
-- 批次配置全貌（batch-size / max-attempts / skip-draft + 优先级链与兜底）见 `queue-structure.md` 的「批次配置（BATCH.yaml）」节。
+- 批次配置全貌（batch-size / max-attempts / skip-draft + 优先级链与兜底）见 `queue-structure.md` 的「批次配置（config/BATCH.yaml）」节。
 
 ## taskq split
 

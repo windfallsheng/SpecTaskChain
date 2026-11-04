@@ -8,6 +8,9 @@
 queue/
 ├── batch-001/               ← 批次目录：一次要做的全部任务（当前批次，新任务落这里）
 │   ├── BATCH.md             ← [可选] 批次元数据（name/purpose/created-at）
+│   ├── config/              ← 批次配置目录（保留目录，与用户任务/模块内容分开）
+│   │   └── BATCH.yaml       ← 批次配置：接力执行的「脾气」（batch-size/max-attempts/skip-draft）
+│   ├── overview/            ← 批次元信息目录（保留目录）：reports/ 下存澄清/完成评估报告
 │   ├── 01-task-01/           ← 顶层任务：目录 = 任务 ID
 │   │   └── SPEC.md
 │   └── module-auth/          ← 任务模块：共享 spec 的院落（module- 前缀 = CLI 生成时的模块标记）
@@ -84,7 +87,7 @@ created-at: 2026-10-01
 - `BATCH.md` 放批次目录根下；模块元数据写在 `CONSTRAINTS.md` 顶部 frontmatter（注入 prompt 时自动剥离，只注入约束正文）。
 - 批次/模块的**完成状态与进度不落盘**——从任务状态聚合推导（单一事实源是 state.json）。
 
-### 批次配置（BATCH.yaml）——每个批次的「脾气」
+### 批次配置（config/BATCH.yaml）——每个批次的「脾气」
 
 ```yaml
 version: 1           # schema 版本戳（升级维护用）
@@ -93,6 +96,7 @@ max-attempts: 3      # 任务失败重试上限（验收不通过累计达上限
 skip-draft: false    # 是否跳过 draft 拦停（true = 未澄清也照跑）
 ```
 
+- **落盘位置**：`config/BATCH.yaml`（批次内 config/ 目录，与用户任务/模块内容分开；未来扩展别的配置文件都往这里放）。旧版本（≤0.2.23）在批次根目录的 `BATCH.yaml` 读侧兼容，`taskq new`/`init` 时自动迁移到 config/（内容原样搬入，校验一致后移除旧文件）。
 - **自动生成**：建批次（`taskq new` 首个批次 / `init`）自动落盘，注释详尽；已存在绝不覆盖（用户手改是最高优先级资产）。
 - **优先级链（每项独立生效）**：CLI 临时指令 > 批次配置 > 系统默认——`taskq execute --batch-size 2` 只当次生效不写回；`taskq ask "一次领 5 个"` 同理。
 - **三级兜底**：文件缺失 → 全默认；内容损坏 → 备份 BATCH.yaml.bak + 告警 + 全默认；单字段异常（负数/非数/类型错）→ 只回落该字段，其余照常生效。
