@@ -15,8 +15,6 @@ export interface BatchConfig {
   'skip-draft': boolean;   // 是否跳过 draft 拦停（true = 规格未澄清也照跑）
   reports: boolean;        // 是否生成评估报告（澄清 CLARIFY_REPORT + 完成 DONE_REPORT；任务级退出用 SPEC.md reports: false）
   overwrite: boolean;      // 澄清处方（taskq fix）是否覆盖写回用户原来的 SPEC.md（覆盖前原文件归档到任务目录 sources/；任务级拒绝用 SPEC.md overwrite: false）
-  'output-dirs': Record<string, string>; // 产出目录覆盖（可选）：类型 → 目录，覆盖内置归位表（如 doc: deliverables/；未列出的类型按内置归位表走）
-  'nest-outputs': boolean; // 默认落位是否按任务名归巢子目录（true = {输出目录}{任务slug}/{slug}.md 任务院落；只作用于 CLI 推断层，用户指定的产出路径绝不套目录）
   'plan-format': 'md' | 'html' | 'none'; // 计划落盘形态：md = 只落 .md 底稿；html = md + 同视觉 HTML 页（默认）；none = 只终端输出不落盘（一次性计划，不可被 --plans 引用）
 }
 
@@ -30,8 +28,6 @@ export const SYSTEM_BATCH_DEFAULTS: BatchConfig = {
   'skip-draft': false,
   reports: true,
   overwrite: true,
-  'output-dirs': {},
-  'nest-outputs': true,
   'plan-format': 'html', // 默认 md + html 双生：底稿人读机读、HTML 双击即看
 };
 
@@ -85,8 +81,6 @@ export function parseBatchConfig(text: string): BatchConfig {
     'skip-draft': safeBool(raw['skip-draft'], SYSTEM_BATCH_DEFAULTS['skip-draft']),
     reports: safeBool(raw['reports'], SYSTEM_BATCH_DEFAULTS['reports']),
     overwrite: safeBool(raw['overwrite'], SYSTEM_BATCH_DEFAULTS['overwrite']),
-    'output-dirs': safeOutputDirs(raw['output-dirs']),
-    'nest-outputs': safeBool(raw['nest-outputs'], SYSTEM_BATCH_DEFAULTS['nest-outputs']),
     'plan-format': safeEnum(raw['plan-format'], ['md', 'html', 'none'], SYSTEM_BATCH_DEFAULTS['plan-format']),
   };
 }
@@ -94,18 +88,6 @@ export function parseBatchConfig(text: string): BatchConfig {
 /** 枚举兜底：值必须是白名单成员，否则回落默认（字段损坏不连坐，其余键照常生效） */
 function safeEnum<T extends string>(v: unknown, allowed: T[], fallback: T): T {
   return typeof v === 'string' && allowed.includes(v as T) ? (v as T) : fallback;
-}
-
-/** 产出目录覆盖兜底：只认「字符串 → 目录」的对象；目录去空白、末尾统一补 /；非字符串值逐项丢弃（单字段损坏不连坐） */
-function safeOutputDirs(v: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
-  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-    if (typeof val !== 'string' || !val.trim()) continue;
-    const dir = val.trim();
-    out[k] = dir.endsWith('/') ? dir : `${dir}/`;
-  }
-  return out;
 }
 
 /**
@@ -192,20 +174,11 @@ export function renderBatchConfig(overrides: Partial<BatchConfig> = {}): string 
     '#',
     '# 澄清处方（taskq fix）是否覆盖写回用户原来的 SPEC.md：',
     '# true = 默认覆盖，覆盖前把原文件归档到任务目录 sources/SPEC.md（可随时找回）；false = 只提示处方不落盘。',
-    '# 个别任务拒绝覆盖（手工写的规格不想被 AI 改），在任务 SPEC.md 写 overwrite: false。',
-    '# 临时覆盖（仅当次生效）：taskq fix --no-overwrite 不覆盖一次 或  taskq fix --overwrite 强制覆盖一次',
+    '# 临时覆盖（仅当次生效，不写回本文件）：taskq fix --no-overwrite 关闭一次 或  taskq fix --overwrite 强制覆盖',
     `overwrite: ${c['overwrite']}`,
     '#',
-    '# 产出目录覆盖（可选）：本批任务类型 → 目录，覆盖内置归位表（doc→docs/、data→data/、research→research/、feature/bugfix→src/ 等）。',
-    '# 未列出的类型按内置归位表走；任务 SPEC.md 的 output 或描述里明确指定的路径永远优先，不受本配置影响。',
-    '# 示例：output-dirs: 后换行缩进写 doc: deliverables/、data: data-2027/（改动后重新跑 taskq clarify / fix 即生效）。',
-    'output-dirs: {}',
-    '#',
-    '# 默认落位是否按任务名归巢子目录：',
-    '# true = CLI 推断默认落位时生成 {输出目录}{任务slug}/{任务slug}.md（任务院落，多产物聚一处、互不踩踏）；',
-    '# false = 扁平放 {输出目录}{任务slug}.md。只作用于 CLI 推断（output 未填时），用户指定的产出路径绝不套目录。',
-    `nest-outputs: ${c['nest-outputs']}`,
-    '#',
+    '# 产出落位：任务做完产出进 outputs/{批次}/{任务目录}/（镜像队列层级，产出总仓只有一个）。',
+    '# 任务 SPEC.md 的 output 或描述里明确指定的路径永远优先，不受默认落位影响。',
     '# 计划落盘形态（taskq plan 的产出）：',
     '#   md = 只落 .md 底稿（默认）；html = md + 同院视觉 HTML 页（双击即看）；none = 只终端输出不落盘，',
     '#   none 的计划是一次性的，不可被 taskq run/execute --plans 引用（没有文件可读）。',

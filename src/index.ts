@@ -5,7 +5,7 @@ export { TaskSpec, AcceptanceSpec, ArtifactRule, validateRequired, parseFrontmat
 export { resolveTaskType, TaskTypeDefinition, listBuiltinTypes } from './core/task-type';
 export { resolveTaskRole, resolveEffectiveRole, defaultRoleForType, renderRoleSegment, renderEffectiveRoleSegment, listBuiltinRoles, TaskRoleDefinition, EffectiveRole } from './core/task-role';
 export { resolveSpecTemplate, templateSourceLabel, SpecTemplate } from './core/task-template';
-export { extractStatedPaths, defaultOutputFor, type OutputLocOptions } from './core/output-location';
+export { extractStatedPaths, defaultOutputFor, mirrorOutputDir } from './core/output-location';
 export { detectTaskIssues, detectDanglingDeps, detectOutputConflicts, detectModuleIssues, detectDuplicateNames, detectRoleConflicts, detectImplicitDeps, renderClarifyReport, ClarifyIssue } from './core/clarify';
 export { buildPlanModel, renderPlan, renderPlanBrief, renderPlanHtml, renderPlanFrontmatter, parsePlanFrontmatter, listPlanSummaries, resolvePlanTaskIds, planSlug, PlanModel, PlanEntry, PlanFrontmatter, PlanSummary } from './core/plan';
 export { planCommand, resolvePlans, PlanOptions } from './commands/plan';

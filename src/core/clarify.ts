@@ -9,7 +9,7 @@ import { isPlaceholderSlug, hasNonAscii, slugFromDir } from './task-naming';
 import { resolveTaskRole, listBuiltinRoles, resolveEffectiveRole } from './task-role';
 import { builtinTemplatePlaceholders } from './task-template';
 import { resolveTaskType } from './task-type';
-import { extractStatedPaths, defaultOutputFor, type OutputLocOptions } from './output-location';
+import { extractStatedPaths, defaultOutputFor } from './output-location';
 
 /** 内置模板占位符行集合（骨架未填实检测的单一事实来源，模块加载时取一次） */
 const BUILTIN_PLACEHOLDERS = builtinTemplatePlaceholders();
@@ -162,7 +162,7 @@ export function detectExecRisks(spec: TaskSpec): ClarifyIssue[] {
  * projectRoot：引用基准（缺省 = 任务目录，保持向后兼容；命令层传项目根，与 output/artifacts 一致）
  * 返回分级清单，用户自己决定补哪条、删哪条、哪条放默认值
  */
-export function detectTaskIssues(spec: TaskSpec, projectRoot?: string, knownArtifacts?: Set<string>, opts?: OutputLocOptions): ClarifyIssue[] {
+export function detectTaskIssues(spec: TaskSpec, projectRoot?: string, knownArtifacts?: Set<string>): ClarifyIssue[] {
   const refBase = projectRoot || spec.dir;
   const issues: ClarifyIssue[] = [];
   // —— 确定性信号 ——
@@ -185,12 +185,8 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string, knownArti
     }
   } else if (!outRaw) {
     const typeDef = resolveTaskType(findMetaDir(spec.dir), spec.type);
-    const def = defaultOutputFor(spec, typeDef, opts);
-    if (def) {
-      issues.push({ level: 'suggest', taskId: spec.id, message: `产出物位置未指明——默认按类型 ${spec.type} 落位 ${def}（任务描述中已指定的以指定为准）` });
-    } else {
-      issues.push({ level: 'suggest', taskId: spec.id, message: `产出物位置未指明——${typeDef.code ? '代码' : '数据'}任务请明确产出/改动的文件或目录（如 src/xxx.ts / data/xxx.csv）` });
-    }
+    const def = defaultOutputFor(spec, typeDef);
+    issues.push({ level: 'suggest', taskId: spec.id, message: `产出物位置未指明——默认落位 ${def}（镜像队列层级 outputs/{批次}/{任务目录}/；任务描述中已指定的以指定为准）` });
   }
   // 验收只有软门禁：无人值守没有机器可查的地基
   if (spec.acceptance && !spec.acceptance.artifacts.length && !spec.acceptance.checks.length && spec.acceptance.review.trim()) {

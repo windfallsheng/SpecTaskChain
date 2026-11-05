@@ -35,7 +35,7 @@ queue/
 - 顶层含 `SPEC.md` 的目录是任务；否则按模块目录扫描（`CONSTRAINTS.md` + 第三层子任务）。
 - **命名仪式**：CLI 新建时任务目录 = `task-{slug}`（普通任务同 `task-` 前缀——参考模块 `module-` 前缀的效果，`task-` 打头一眼区分于模块目录；不带序号、不关注目录顺序；`--name` 优先，已带 `task-` 前缀则尊重原样不叠加；无 `--name` 时从 goal 提取语义 slug，中文转全拼，提不出用任务类型键兜底——`task-script` 而非 `task`）；模块目录 = `module-{slug}`（语义化前缀，已带前缀不叠加）；批次目录 = `batch-{NNN}`。用户手工建的目录不受仪式约束——扫描只认结构（有无 SPEC.md），名字叫什么都认。
 - 任务目录内可自由放置材料文件（图片、数据等）：在 SPEC.md 正文中引用（`[标题](相对路径)` 或裸路径），执行时由 CLI 消解为真实内容嵌入 prompt（基准 = 项目根）；引用的文件不存在会报阻塞，绝不静默跳过。
-- 代码与产出**不在任务目录内**：代码写到 SPEC.md 的 `output` 声明的项目根路径，任务目录只放规格。
+- 代码与产出**不在任务目录内**：产出落在 SPEC.md 的 `output` 声明的项目根路径——默认镜像 `outputs/{批次}/{任务目录}/`（与队列同构，含模块子任务层级）；任务描述里明确指定路径时按指定走。任务目录只放规格。
 
 ## 任务模块（共享 spec 的院落）
 
@@ -158,21 +158,20 @@ depends-on:
 
 | 类型 | 代码形态 | 默认产出 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `general` | 否 | `outputs/` | 通用任务（缺省回退） |
-| `doc` | 否 | `docs/` | 文档写作 |
-| `script` | 是 | `scripts/` | 脚本编写 |
-| `data` | 否 | `data/` | 数据整理 |
-| `research` | 否 | `research/` | 调研分析 |
-| `presentation` | 否 | `presentation/` | 演示稿 |
-| `feature` | 是 | `src/` | 功能开发 |
-| `bugfix` | 是 | `src/` | 缺陷修复 |
+| `general` | 否 | `outputs/{批次}/{任务目录}/` | 通用任务（缺省回退） |
+| `doc` | 否 | 同上（镜像队列层级） | 文档写作 |
+| `script` | 是 | 同上（镜像队列层级） | 脚本编写 |
+| `data` | 否 | 同上（镜像队列层级） | 数据整理 |
+| `research` | 否 | 同上（镜像队列层级） | 调研分析 |
+| `presentation` | 否 | 同上（镜像队列层级） | 演示稿 |
+| `feature` | 是 | 同上（镜像队列层级） | 功能开发 |
+| `bugfix` | 是 | 同上（镜像队列层级） | 缺陷修复 |
 
 自定义类型：`.taskchain/TASK_TYPES/{类型}.md`（YAML frontmatter）：
 
 ```yaml
 ---
 code: true                 # 是否为代码任务
-output-dir: tools/
 constraints:               # 类型默认约束，每次执行注入 prompt
   - 脚本可独立运行，含必要注释与错误处理
 description: 内部工具开发
@@ -183,7 +182,7 @@ description: 内部工具开发
 
 ## 执行角色（可选：type 管形态，role 管专业）
 
-`role` 与 `type` 正交：type 管「产出什么形态」（代码与否/产出位置/默认约束），role 管「以什么专业身份干」（角色立场/专业关注点/角色禁忌，执行时注入 prompt）。
+`role` 与 `type` 正交：type 管「产出什么形态」（代码与否/默认约束；产出落点由任务描述或镜像推断定，类型不再决定落点），role 管「以什么专业身份干」（角色立场/专业关注点/角色禁忌，执行时注入 prompt）。
 
 - **内置角色**（10 个，命名语义化 + 专业化）：generalist（通才兜底）/ document-writer（文档写作）/ code-engineer（代码工程）/ debug-engineer（缺陷修复）/ test-engineer（测试工程）/ security-reviewer（安全审查）/ devops-engineer（运维工程）/ data-analyst（数据分析）/ research-analyst（调研分析）/ presentation-designer（演示设计）。旧名（doc-writer/coder/tester/ops/analyst/designer）走别名零感知兼容
 - **自定义角色**：`.taskchain/ROLES/{角色}.md`（YAML frontmatter：stance/focus/taboos/description/applies-to），与 TASK_TYPES 同模式；同名自定义角色覆盖内置（用户压过系统）

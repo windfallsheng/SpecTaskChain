@@ -5,6 +5,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { TaskQConfig } from '../../src/core/config';
 import { scanQueue, selectBatch, batchKey, latestBatchId } from '../../src/core/queue';
+import { readOpLog } from '../../src/core/oplog';
 import { newCommand } from '../../src/commands/new';
 import { relayNext, markTaskState } from '../../src/core/runner';
 import { listCommand } from '../../src/commands/list';
@@ -60,6 +61,27 @@ describe('扫描：多批次', () => {
     expect(queue.batches.map((b) => b.id)).toEqual(['batch-001', 'batch-002', 'tasks']);
     expect(queue.tasks.map((t) => t.id).sort()).toEqual(['01-a', '01-old', '02-b']);
     expect(latestBatchId(queue.batches)).toBe('batch-002');
+  });
+
+  it('出生证明：空壳 batch- 目录不算批次（mkdir 旁门拦截）；有 BATCH.yaml 或已有任务内容才算', () => {
+    const cfg = makeCfg();
+    mkdirSync(join(cfg.queueDir, 'batch-001'), { recursive: true }); // 空壳旁门
+    mkdirSync(join(cfg.queueDir, 'batch-002', 'config'), { recursive: true }); // 出生证明（目录可空）
+    writeFileSync(join(cfg.queueDir, 'batch-002', 'config', 'BATCH.yaml'), 'batch-size: 3\n');
+    makeTask(cfg, 'batch-003', '03-a'); // 无证明但有任务内容（兼容老式手工批次）
+    const queue = scanQueue(cfg.queueDir, cfg.metaDir);
+    expect(queue.batches.map((b) => b.id)).toEqual(['batch-002', 'batch-003']);
+  });
+
+  it('new --batch 指向空壳目录 → 拦截（不存在报错）并 op-log 留痕', () => {
+    const cfg = makeCfg();
+    makeTask(cfg, 'batch-001', '01-a');
+    mkdirSync(join(cfg.queueDir, 'batch-003'), { recursive: true }); // 旁门产物
+    const res = newCommand(cfg, { goal: '偷建任务', name: 'toujian', batch: 'batch-003', draft: true });
+    expect(res).toContain('不存在');
+    expect(res).toContain('batch-001'); // 现有批次清单
+    const log = readOpLog(cfg);
+    expect(log.some((e) => e.cmd === 'new' && e.target === 'batch-003' && e.note!.startsWith('❌'))).toBe(true);
   });
 
   it('selectBatch：缺省 = 最新批次；指定老批次；all 全量；不存在返回 null', () => {

@@ -1,5 +1,7 @@
-// 产出物位置：用户指定优先，类型默认兜底——clarify 体检与 fix 机械修复共用的单一事实来源
-// 规则：任务描述里明确说了产出位置（产出动词 + 路径）→ 按用户指定；没说 → 非代码/数据类型按 {outputDir}{slug}.md 默认落位
+// 产出物位置：用户指定优先，镜像推断兜底——clarify 体检与 fix 机械修复共用的单一事实来源
+// 规则：任务描述里明确说了产出位置（产出动词 + 路径）→ 按用户指定；没说 → 镜像队列层级落位
+// 镜像：产出总仓 outputs/ 与队列同构——queue/batch-003/task-hedui/ → outputs/batch-003/task-hedui/；
+// 模块子任务 queue/batch-003/module-budget/xxx/ → outputs/batch-003/module-budget/xxx/；旧式 tasks（第 0 批）→ outputs/tasks/xxx/
 import type { TaskSpec } from './task-spec';
 import { slugFromDir } from './task-naming';
 import type { TaskTypeDefinition } from './task-type';
@@ -29,18 +31,23 @@ export function extractStatedPaths(text: string): string[] {
   return found;
 }
 
-/** 默认落位选项：批次产出目录覆盖 + 归巢开关（任务院落） */
-export interface OutputLocOptions {
-  batchDirs?: Record<string, string>; // 批次配置 output-dirs：类型 → 目录，覆盖内置归位表
-  nest?: boolean;                     // 按任务名归巢子目录（默认 false 保持扁平；调用处按批次配置传）
+/** 产出落位镜像：任务目录的批次/任务层级平移到 outputs/ 下（目录名与队列完全一致，照队列找同路径即见产出） */
+export function mirrorOutputDir(spec: TaskSpec): string {
+  const parts = spec.dir.split(/[\\/]+/);
+  let idx = -1;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i] === 'tasks' || /^batch-\d+$/.test(parts[i])) { idx = i; break; }
+  }
+  if (idx < 0) return 'outputs/';
+  return 'outputs/' + parts.slice(idx).join('/') + '/';
 }
 
-/** 类型默认落位：{base}{slug}.md；归巢时 {base}{slug}/{slug}.md（目录=任务院落，多产物聚一处不踩踏）。
- * 代码/数据类型扩展名不可断定，返回空串（留给宿主 AI/用户明确）。
- * 目录优先级：批次 output-dirs > 类型内置 outputDir；用户指定 output 的场景不经过这里——那是用户表达，最高优先级。 */
-export function defaultOutputFor(spec: TaskSpec, typeDef: TaskTypeDefinition, opts: OutputLocOptions = {}): string {
-  if (typeDef.code || typeDef.name === 'data') return '';
+/** 默认落位：镜像院落目录；文档类（非代码非数据）再精确到院落内 {slug}.md 主产出文件。
+ * 代码/数据类型扩展名不可断定，返回院落目录（具体文件由宿主 AI/用户明确）。
+ * 用户指定 output 的场景不经过这里——那是用户表达，最高优先级。 */
+export function defaultOutputFor(spec: TaskSpec, typeDef: TaskTypeDefinition): string {
+  const dir = mirrorOutputDir(spec);
+  if (typeDef.code || typeDef.name === 'data') return dir;
   const slug = slugFromDir(spec.id) || spec.id;
-  const base = (opts.batchDirs && opts.batchDirs[typeDef.name]) || typeDef.outputDir;
-  return opts.nest ? `${base}${slug}/${slug}.md` : `${base}${slug}.md`;
+  return `${dir}${slug}.md`;
 }

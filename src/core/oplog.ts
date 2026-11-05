@@ -1,4 +1,4 @@
-// 操作轨迹账（op-log.json）：队列写操作的追加式时间线流水
+// 操作轨迹账（op-log.json）：队列写操作的追加式时间线流水——成功与拦截都落账（拦截 note 带 ❌/⛔ 前缀）
 // 与 state.json 分工：state 记当前态（任务「现在」是什么状态），op-log 记时间线（「何时」发生了什么）
 // JSONL 每行一条：追加 O(1) 原子写，损坏行局部跳过不拖累全账
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs';

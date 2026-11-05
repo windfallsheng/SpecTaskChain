@@ -89,16 +89,8 @@ footer{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3
   </ul>
 </div>
 <div class="zone">
-  <h3>② 产出落位 —— 按 --type 自动归位，目录按需出现</h3>
-  <table>
-    <thead><tr><th>任务类型</th><th>产出落位</th><th>任务类型</th><th>产出落位</th></tr></thead>
-    <tbody>
-      <tr><td>doc</td><td>docs/</td><td>research</td><td>research/</td></tr>
-      <tr><td>data</td><td>data/</td><td>presentation</td><td>presentation/</td></tr>
-      <tr><td>script</td><td>scripts/</td><td>feature | bugfix</td><td>src/</td></tr>
-      <tr><td>general（缺省）</td><td>outputs/</td><td>自定义类型</td><td>.taskchain/TASK_TYPES/{类型}.md 里 output-dir 可改</td></tr>
-    </tbody>
-  </table>
+  <h3>② 产出总仓 —— outputs/ 镜像队列层级，目录按需出现</h3>
+  <p>任务做完，产出进 <b>outputs/{批次}/{任务目录}/</b> —— 与 queue/ 同构，照队列找同路径即见产出；模块子任务带模块层级（outputs/{批次}/{模块}/{子任务}/）。<b>任务描述里指定的路径永远优先</b>（如「写到 docs/xxx.md」）。</p>
 </div>
 <div class="zone">
   <h3>③ 用户自组织区 —— 自由命名，taskq 不认识也不碰</h3>
@@ -128,7 +120,7 @@ footer{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3
 
 <h2>常见问题</h2>
 <div class="faq">
-  <p><b>Q: 跑完任务多了个 docs/，能删吗？</b><br>A: 那是任务产出，验收产物门禁核对文件在不在——不需要再删。</p>
+  <p><b>Q: 跑完任务 outputs/ 里多了东西，能删吗？</b><br>A: 那是任务产出，验收产物门禁核对文件在不在——不需要再删。</p>
   <p><b>Q: run 被拦截（退出码 12）怎么办？</b><br>A: 看拦截原因：draft 先 clarify 补全或 --skip-draft 强跑；模块缺共享 spec 先补 CONSTRAINTS.md；doing 有人干活等它 done；failed 修复后重新 done 验收。</p>
   <p><b>Q: 换会话/换工具怎么接着跑？</b><br>A: 账本在文件里，不在任何 AI 的脑子里——taskq run 一执行即续跑（PROGRESS.md 留痕自动注入）。</p>
   <p><b>Q: 想重跑某个任务？</b><br>A: taskq reset &lt;任务ID&gt;（软复位留痕保留 = 调整补充）；从头再来 taskq reset --all --hard。</p>

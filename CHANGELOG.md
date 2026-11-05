@@ -1,5 +1,13 @@
 # CHANGELOG
 
+**产出落位镜像队列层级：outputs/ 单一产出总仓 + 批次防线三刀（出生证明/拦截落账/SKILL 防错）**：
+
+- **产出总仓 outputs/ 镜像队列层级**：默认产出不再按类型归位（docs/data/research…），统一进 outputs/{批次}/{任务目录}/，与 queue/ 同构（task-/module-/模块子任务层级原样保留）；任务 SPEC.md 的 output 或描述里明确指定的路径仍最高优先；类型定义（task-type）删 outputDir、批次配置（batch-config）删 output-dirs/nest-outputs 两键——类型只管形态与约束，不再决定落点
+- **批次出生证明**：scanQueue 只认带 BATCH.yaml（config/ 或批次根）或已有任务内容的 batch- 目录；空壳目录（先 mkdir 再建任务的旁门）不识别为批次，new --batch 指向空壳即拦截报错
+- **拦截落账**：op-log.json 成功与拦截同账（拦截 note 带 ❌/⛔ 前缀）——new 批次拦截、run/execute 八处拦停（批次不存在/定向无匹配/failed/模块缺共享 spec/draft/批内拦停）全部留痕，批次翻转与意图偏差一查账本便知
+- **SKILL 防错文案**：taskq-new 模板补两条纪律——批次只能由 taskq new 创建（禁止先 mkdir 空壳目录），复盘先读 queue/.taskchain/op-log.json
+- 文档同步：README、docs 四份（directory-layout/queue-structure/scenarios/spec-format）、help/guide/init 文案全量收口；测试 480（+2 出生证明三态与空壳拦截落账，原 478 断言全量改镜像路径）
+
 **全面检查第二波：SKILL 模板源补齐 taskq-plan + 口径统一（不是抽检，是同类全实例扫描）**：
 
 - **病灶①模板源缺 taskq-plan**：此前 examples 里的 taskq-plan/taskq-run v0.2.37 是直改产物，CLI 模板源（init.ts renderSkillFiles）只有 5 个 SKILL——任何新项目 `taskq init` 都不会生成计划 SKILL，且旧 taskq-run 模板无「先谋后动/--plans/--replan」语义。修复：模板源新增 taskq-plan 子模板（全景/命名计划、--list/--show、--plans 按计划执行、先谋后动沿用与 --replan 语义、frontmatter tasks 机读锚点、plan-format 三形态、失败降级一行警告），taskq-run 模板补齐计划语义与计划外待办提示；examples 产物经 `taskq init --update` 从模板源重生成，漂移消除

@@ -14,7 +14,7 @@
 | 字段 | 必填 | 说明 |
 | :--- | :--- | :--- |
 | `goal` | ✅ | 目标，一句话也行（任务要做什么） |
-| `output` | ✅ | 产出位置（相对项目根的目录，如 `docs/`、`src/auth/`） |
+| `output` | ✅ | 产出位置（相对项目根的目录，如 `outputs/batch-002/task-hedui/`；任务描述里明确指定路径时按指定，如 `src/auth/`） |
 | `acceptance` | ✅ | 验收三态：artifacts + checks + review（至少一项非空） |
 | `name` | 可选 | 显示名（人类可读，可中文）；目录名是 ASCII 机器身份，两者分工 |
 | `type` | 可选 | 任务类型，缺省 `general`（见 [queue-structure.md](queue-structure.md#任务类型)） |

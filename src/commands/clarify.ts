@@ -7,7 +7,6 @@ import { scanQueue, latestBatchId, QueueScan } from '../core/queue';
 import { readSpec, parseFrontmatter, buildSpec } from '../core/task-spec';
 import { resolveTaskType } from '../core/task-type';
 import { readBatchConfig, locateBatchConfig, type BatchConfig } from '../core/batch-config';
-import type { OutputLocOptions } from '../core/output-location';
 import { buildClarifyAssessment, dispatchAssessment, assessmentNotice, resolveReportSwitch } from '../core/assessment';
 import { computeFixes } from '../core/fixer';
 import { readLineSync } from './fix';
@@ -20,11 +19,6 @@ import {
   taskIdFromPath,
   ClarifyIssue,
 } from '../core/clarify';
-
-/** 批次配置 → 默认落位选项（产出目录覆盖 + 归巢开关；各任务按所属批次定位，互不牵连） */
-function locOpts(b: BatchConfig): OutputLocOptions {
-  return { batchDirs: b['output-dirs'], nest: b['nest-outputs'] };
-}
 
 export interface ClarifyOptions {
   taskId?: string;  // 单任务（按 ID）
@@ -96,7 +90,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     const { data, body } = parseFrontmatter(content);
     const id = taskIdFromPath(resolved) || '此文件';
     const spec = buildSpec(id, resolved, data, body, 'general');
-    issues = detectTaskIssues(spec, cfg.projectRoot, undefined, locOpts(locateBatchConfig(dirname(resolved), cfg.queueDir)));
+    issues = detectTaskIssues(spec, cfg.projectRoot, undefined);
   } else if (opts.taskId) {
     // 单任务体检（写完即查 / 翻车后查）
     const all = [...queue.tasks, ...queue.modules.flatMap((m) => m.subtasks)];
@@ -104,9 +98,9 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     if (!found) {
       return `❌ 未找到任务「${opts.taskId}」。可用：taskq list 查看队列清单。`;
     }
-    issues = detectTaskIssues(found, cfg.projectRoot, collectArtifacts(queue), locOpts(locateBatchConfig(found.dir, cfg.queueDir)));
+    issues = detectTaskIssues(found, cfg.projectRoot, collectArtifacts(queue));
     // 单任务体检后顺手亮修复提示（A 档机械修）
-    const fixable = computeFixes(found, resolveTaskType(cfg.metaDir, found.type), locOpts(locateBatchConfig(found.dir, cfg.queueDir))).length;
+    const fixable = computeFixes(found, resolveTaskType(cfg.metaDir, found.type)).length;
     fixHint = fixable ? `🔧 可自动修复 ${fixable} 处：taskq fix --task ${found.id}（--yes 应用 / --dry-run 预览）` : '';
   } else if (opts.chain) {
     // 建链前查：只查链级硬伤（建链前逐任务可能还没写完，不报三必填）
@@ -118,9 +112,9 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     }
     issues = [...detectChainIssues(queue), ...detectImplicitDeps(queue)];
     const knownArtifacts = collectArtifacts(queue);
-    for (const t of queue.tasks) issues.push(...detectTaskIssues(t, cfg.projectRoot, knownArtifacts, locOpts(locateBatchConfig(t.dir, cfg.queueDir))));
+    for (const t of queue.tasks) issues.push(...detectTaskIssues(t, cfg.projectRoot, knownArtifacts));
     for (const m of queue.modules) {
-      for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot, knownArtifacts, locOpts(locateBatchConfig(s.dir, cfg.queueDir))));
+      for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot, knownArtifacts));
     }
     // 全量体检 → 澄清评估报告后台生成（不阻断终端输出）：每任务评估 + 总体评级，MD+HTML 落批次 overview/reports/
     // 报告开关四级链：CLI 临时（--no-report/--report）> 任务级（SPEC.md reports: false 筛掉）> 批次级（config/BATCH.yaml reports）> 系统默认（生成）
@@ -139,7 +133,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
       clarifyNotice = assessmentNotice(cfg.queueDir, report);
     }
     // 全量体检后亮修复提示（A 档机械修）
-    const fixable = allTasks.reduce((n, t) => n + computeFixes(t, resolveTaskType(cfg.metaDir, t.type), locOpts(locateBatchConfig(t.dir, cfg.queueDir))).length, 0);
+    const fixable = allTasks.reduce((n, t) => n + computeFixes(t, resolveTaskType(cfg.metaDir, t.type)).length, 0);
     fixHint = fixable ? `🔧 可自动修复 ${fixable} 处：taskq fix（--yes 应用 / --dry-run 预览）` : '';
   }
 

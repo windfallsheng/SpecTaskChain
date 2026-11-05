@@ -45,12 +45,11 @@ describe('HTML 引导页：内容章节与写盘', () => {
   it('三类目录说明齐全（队列本体/产出落位映射/用户自组织区）', () => {
     const html = guideHtml(makeCfg());
     expect(html).toContain('队列本体');
-    expect(html).toContain('产出落位');
+    expect(html).toContain('产出总仓');
     expect(html).toContain('用户自组织区');
-    // 类型 → 目录映射抽查
-    expect(html).toContain('docs/');
-    expect(html).toContain('research/');
-    expect(html).toContain('outputs/');
+    // 镜像落位抽查
+    expect(html).toContain('outputs/{批次}/{任务目录}/');
+    expect(html).toContain('outputs/{批次}/{模块}/{子任务}/');
     expect(html).toContain('materials/');
   });
 

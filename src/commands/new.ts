@@ -65,6 +65,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   // 旧式 tasks 是只读兼容容器（第 0 批），不在默认落点内——新任务一律进 batch-NNN，无则建 batch-001
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   if (opts.batch && !queue.batches.some((b) => b.id === opts.batch)) {
+    appendOpLog(cfg, { cmd: 'new', target: opts.batch, note: '❌ 拦截：批次不存在（空壳 batch- 目录无出生证明 BATCH.yaml，不算批次）' });
     return `❌ 批次「${opts.batch}」不存在。现有批次：${queue.batches.map((b) => b.id).join('、') || '无（首个批次将自动创建 batch-001）'}`;
   }
   const batchId = opts.batch || resolveDefaultBatch(cfg, queue.batches.filter((b) => b.id !== 'tasks')) || 'batch-001';
@@ -132,7 +133,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
         type: opts.type || 'general',
         name: shownName,
         goal: opts.goal,
-        output: opts.draft ? typeDef.outputDir : '',
+        output: opts.draft ? `outputs/${batchId}/${modName}/${subName}/` : '',
         acceptance: { artifacts: [], checks: [], review: '' },
         createdAt: new Date().toISOString().slice(0, 10),
         priority: opts.priority,
@@ -176,7 +177,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
       type: opts.type || 'general',
       name: shownName,
       goal: opts.goal,
-      output: opts.draft ? typeDef.outputDir : '',
+      output: opts.draft ? `outputs/${batchId}/${id}/` : '',
       acceptance: { artifacts: [], checks: [], review: '' },
       createdAt: new Date().toISOString().slice(0, 10),
       priority: opts.priority,

@@ -51,29 +51,6 @@ describe('parseBatchConfig：字段级兜底', () => {
     expect(parseBatchConfig('overwrite: 随便写的\n').overwrite).toBe(true);
   });
 
-  it('output-dirs：类型 → 目录映射解析，目录去空白补斜杠', () => {
-    const c = parseBatchConfig('version: 1\noutput-dirs:\n  doc: deliverables\n  data: " data-2027/"\n');
-    expect(c['output-dirs']).toEqual({ doc: 'deliverables/', data: 'data-2027/' });
-  });
-
-  it('output-dirs：缺省 → 空对象；列表形态/非对象 → 整体回落空', () => {
-    expect(parseBatchConfig('batch-size: 2\n')['output-dirs']).toEqual({});
-    expect(parseBatchConfig('output-dirs:\n  - doc: x\n')['output-dirs']).toEqual({}); // 列表形态不是映射 → 回落
-    expect(parseBatchConfig('output-dirs: nope\n')['output-dirs']).toEqual({}); // 标量不是映射 → 回落
-  });
-
-  it('nest-outputs：缺省 → 默认 true（CLI 推断默认落位按任务归巢）；显式 false 生效', () => {
-    expect(parseBatchConfig('batch-size: 2\n')['nest-outputs']).toBe(true);
-    expect(parseBatchConfig('nest-outputs: false\n')['nest-outputs']).toBe(false);
-    expect(parseBatchConfig('nest-outputs: 随便写的\n')['nest-outputs']).toBe(true); // 非法回落默认
-  });
-
-  it('renderBatchConfig 模板含两键说明（产出目录覆盖 + 归巢开关）', () => {
-    const t = renderBatchConfig();
-    expect(t).toContain('output-dirs: {}');
-    expect(t).toContain('nest-outputs: true');
-  });
-
   it('单个字段异常只回落该字段，其余照常生效（用户手改一半也要尊重）', () => {
     const c = parseBatchConfig('batch-size: 5\nmax-attempts: -1\nskip-draft: 随便写的\n');
     expect(c['batch-size']).toBe(5); // 正常字段保留

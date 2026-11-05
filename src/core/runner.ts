@@ -280,6 +280,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
   const focusBatch = opts.batch && opts.batch !== 'all' ? opts.batch : resolveDefaultBatch(cfg, queue.batches);
   const view = selectBatch(queue, opts.batch, focusBatch);
   if (!view) {
+    appendOpLog(cfg, { cmd: 'run', target: opts.batch, note: `❌ 拦截：批次「${opts.batch}」不存在（空壳 batch- 目录无出生证明不算批次）` });
     return {
       task: null as any,
       prompt: '',
@@ -294,6 +295,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
   if (opts.task || opts.module || opts.taskIds?.length) {
     sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module, taskIds: opts.taskIds });
     if (sequence.length === 0) {
+      appendOpLog(cfg, { cmd: 'run', target: opts.task || opts.module, note: '❌ 拦截：定向目标不存在' });
       return {
         task: null as any,
         prompt: '',
@@ -335,6 +337,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
     const hint = st.attempts >= max
       ? `已失败 ${st.attempts} 次（达尝试上限 ${max} 次）`
       : `处于 failed 态但仅尝试 ${st.attempts}/${max} 次（未达上限）——可 \`taskq done ${next.spec.id} --verdict "..."\` 重新验收，通过即恢复接力`;
+    appendOpLog(cfg, { cmd: 'run', target: next.spec.id, batch: focusBatch || undefined, note: '⛔ 拦停：任务 failed 需人工介入' });
     return {
       task: next,
       prompt: '',
@@ -343,6 +346,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
     };
   }
   if (next.module && next.module.constraintsMissing) {
+    appendOpLog(cfg, { cmd: 'run', target: next.spec.id, batch: focusBatch || undefined, note: '⛔ 拦停：模块公共约束 CONSTRAINTS.md 缺失或为空' });
     return {
       task: next,
       prompt: '',
@@ -351,6 +355,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
     };
   }
   if (next.spec.draft && !(opts.skipDraft || batchCfg['skip-draft'])) {
+    appendOpLog(cfg, { cmd: 'run', target: next.spec.id, batch: focusBatch || undefined, note: '⛔ 拦停：规格为 draft 未澄清' });
     return {
       task: next,
       prompt: '',
@@ -490,6 +495,7 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
   const focusBatch = opts.batch && opts.batch !== 'all' ? opts.batch : resolveDefaultBatch(cfg, queue.batches);
   const view = selectBatch(queue, opts.batch, focusBatch);
   if (!view) {
+    appendOpLog(cfg, { cmd: 'execute', target: opts.batch, note: `❌ 拦截：批次「${opts.batch}」不存在（空壳 batch- 目录无出生证明不算批次）` });
     return {
       tasks: [],
       prompts: [],
@@ -505,6 +511,7 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
   if (opts.task || opts.module || opts.taskIds?.length) {
     sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module, taskIds: opts.taskIds });
     if (sequence.length === 0) {
+      appendOpLog(cfg, { cmd: 'execute', target: opts.task || opts.module, note: '❌ 拦截：定向目标不存在' });
       return {
         tasks: [],
         prompts: [],
@@ -550,7 +557,10 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
   }
 
   if (!taken.length) {
-    if (stop) return { tasks: [], prompts: [], exitCode: 12, summary: stop };
+    if (stop) {
+      appendOpLog(cfg, { cmd: 'execute', target: '批内拦停', batch: focusBatch || undefined, note: `⛔ 拦停：${stop}` });
+      return { tasks: [], prompts: [], exitCode: 12, summary: stop };
+    }
     // 按计划（--plans/沿用计划）执行时，计划圈定任务跑完 ≠ 队列清空：队列可能还有计划外待办，须如实提示出口
     if (opts.taskIds?.length) {
       const inPlan = new Set(opts.taskIds);

@@ -68,11 +68,10 @@ export function fixCommand(cfg: TaskQConfig, opts: FixOptions): string {
   const plans = targets
     .filter((t) => t.overwrite !== false)
     .map((t) => {
-      const b = locateBatchConfig(t.dir, cfg.queueDir); // 产出推断按任务所属批次（产出目录覆盖 + 归巢）
       return {
         task: t,
         specPath: join(t.dir, 'SPEC.md'),
-        items: computeFixes(t, resolveTaskType(cfg.metaDir, t.type), { batchDirs: b['output-dirs'], nest: b['nest-outputs'] }),
+        items: computeFixes(t, resolveTaskType(cfg.metaDir, t.type)),
       };
     })
     .filter((p) => p.items.length);

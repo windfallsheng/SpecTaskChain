@@ -87,34 +87,26 @@ describe('SPEC.md 畸形输入：不崩、不静默丢字段', () => {
     expect(out).toContain('按用户指定的来');
   });
 
-  it('产出物位置：未指明（doc 类型）→ 建议类型默认落位 docs/{slug}.md', () => {
+  it('产出物位置：未指明（doc 类型）→ 建议镜像落位 outputs/{批次}/{任务目录}/{slug}.md', () => {
     const cfg = makeCfg();
     makeTask(cfg, '05-mo-ren', '---\ntype: doc\ngoal: 写一份说明\noutput: \nacceptance:\n  artifacts: []\n  checks: []\n  review: 待评审\n---\n正文');
     const out = clarifyCommand(cfg, { taskId: '05-mo-ren' });
-    expect(out).toContain('默认按类型 doc 落位 docs/');
+    expect(out).toContain('outputs/batch-001/05-mo-ren/mo-ren.md');
   });
 
-  it('产出物位置：未指明（feature 代码任务）→ 提示明确文件或目录', () => {
+  it('产出物位置：未指明（feature 代码任务）→ 镜像院落目录建议（不猜扩展名）', () => {
     const cfg = makeCfg();
     makeTask(cfg, '06-daima', '---\ntype: feature\ngoal: 优化登录接口\noutput: \nacceptance:\n  artifacts: []\n  checks: []\n  review: 待评审\n---\n正文');
     const out = clarifyCommand(cfg, { taskId: '06-daima' });
-    expect(out).toContain('代码任务请明确产出/改动的文件或目录');
+    expect(out).toContain('outputs/batch-001/06-daima/');
   });
 
-  it('产出物位置：批次 nest-outputs 默认 true → 默认落位按任务归巢子目录', () => {
+  it('产出物位置：镜像建议说明层级（提示 outputs/{批次}/{任务目录}/ 口径）', () => {
     const cfg = makeCfg();
     makeTask(cfg, '07-guichao', '---\ntype: doc\ngoal: 写一份说明\noutput: \nacceptance:\n  artifacts: []\n  checks: []\n  review: 待评审\n---\n正文');
     const out = clarifyCommand(cfg, { taskId: '07-guichao' });
-    expect(out).toContain('docs/guichao/guichao.md'); // 任务院落：{输出目录}{任务slug}/{slug}.md
-  });
-
-  it('产出物位置：批次 output-dirs 覆盖目录 → 建议取批次配置目录', () => {
-    const cfg = makeCfg();
-    makeTask(cfg, '08-fugai', '---\ntype: doc\ngoal: 写一份说明\noutput: \nacceptance:\n  artifacts: []\n  checks: []\n  review: 待评审\n---\n正文');
-    mkdirSync(join(cfg.queueDir, 'batch-001', 'config'), { recursive: true });
-    writeFileSync(join(cfg.queueDir, 'batch-001', 'config', 'BATCH.yaml'), 'output-dirs:\n  doc: deliverables/\n');
-    const out = clarifyCommand(cfg, { taskId: '08-fugai' });
-    expect(out).toContain('deliverables/fugai/fugai.md');
+    expect(out).toContain('outputs/batch-001/07-guichao/guichao.md');
+    expect(out).toContain('镜像队列层级');
   });
 
   it('二进制乱码 SPEC.md → 不抛异常，按无 frontmatter 处理', () => {

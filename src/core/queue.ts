@@ -165,6 +165,9 @@ export function scanQueue(queueDir: string, metaDir: string): QueueScan {
     if (!statSync(full).isDirectory()) continue;
     // 批次目录：batch-{NN}；旧式 tasks 目录作为过渡批次继续识别
     if (entry !== 'tasks' && !/^batch-\d+$/.test(entry)) continue;
+    // 出生证明：batch-{NN} 目录须带 BATCH.yaml（config/ 新位置或批次根旧位置）或已有内容（任务/模块）才算真批次；
+    // 空壳目录（先 mkdir 再建任务的旁门）不识别——new 的批次拦截按这份清单放行，旁门进不来
+    if (entry !== 'tasks' && !existsSync(join(full, 'config', 'BATCH.yaml')) && !existsSync(join(full, 'BATCH.yaml')) && readdirSync(full).length === 0) continue;
     const { tasks, modules } = scanTaskArea(full, metaDir);
     const meta = readBatchMeta(full);
     if (!meta.createdAt) meta.createdAt = dirBirth(full);

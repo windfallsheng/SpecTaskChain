@@ -84,7 +84,7 @@ taskq ask "看下进度"                                 # 口语入口（识别
 
 taskq 不接管你的项目——它只管理 `queue/`。项目里其余目录只有两种身份：
 
-- **产出落位**：`docs/` `data/` `research/` `presentation/` `scripts/` `src/` `outputs/` ——按任务类型自动归位（`--type doc` 产出落 `docs/`、`--type research` 落 `research/`……），目录按需出现，映射可自定义。
+- **产出总仓**：`outputs/` ——镜像队列层级（`outputs/{批次}/{任务目录}/` 与 `queue/` 同构，照队列找同路径即见产出）；任务描述里明确指定了路径时按指定走。
 - **用户自组织区**：`materials/` `specs/` `logs/` 或任何你已有的目录——taskq 不认识也不碰，名字随你定；素材类文件放这里，`taskq split materials/x.md` 指过去即可。
 
 三类目录各司其职的完整说明见 [docs/directory-layout.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/directory-layout.md)。
