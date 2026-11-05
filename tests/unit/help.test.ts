@@ -28,7 +28,7 @@ describe('help 总览：命令表 + 目录布局 + 核心概念', () => {
     const h = helpText();
     expect(h).toContain('项目目录布局（taskq 只管理 queue/，其余不碰）');
     expect(h).toContain('队列本体：批次/任务/状态账本（唯一管理区）');
-    expect(h).toContain('产出总仓（镜像队列层级）');
+    expect(h).toContain('产出院落（产出与任务同住）');
     expect(h).toContain('用户自组织区：名字随你；素材指给 split/pipeline');
   });
   it('核心概念速览：验收三态 / 退出码 / 批次聚焦', () => {
@@ -36,6 +36,20 @@ describe('help 总览：命令表 + 目录布局 + 核心概念', () => {
     expect(h).toContain('artifacts 产物 + checks 断言 + review 评审');
     expect(h).toContain('10 有任务接力 / 12 拦截');
     expect(h).toContain('--batch all 全批次');
+  });
+  it('help spec：任务字段说明书（人话版字段速查）', () => {
+    const d = commandDetail('spec');
+    expect(d).toContain('任务规格字段说明书');
+    expect(d).toContain('goal');
+    expect(d).toContain('这任务要干什么');
+    expect(d).toContain('output');
+    expect(d).toContain('默认落任务目录内 outputs/');
+    expect(d).toContain('acceptance');
+    expect(d).toContain('怎么算做完');
+    expect(d).toContain('taskq fix --yes');
+    expect(d).toContain('执行计划（PLAN.md');
+    expect(d).toContain('overview/PLAN.md');
+    expect(d).toContain('先谋后动');
   });
 });
 
@@ -50,14 +64,25 @@ describe('help guide 引导页：三步 + 三类目录 + 概念 + FAQ', () => {
   it('三类目录完整展开（含 .taskchain 与类型映射）', () => {
     const g = guideText();
     expect(g).toContain('队列本体（taskq 唯一管理区）');
-    expect(g).toContain('产出总仓 outputs/（镜像队列层级）');
-    expect(g).toContain('outputs/{批次}/{任务目录}/');
+    expect(g).toContain('产出院落：任务目录内 outputs/（产出与任务同住）');
+    expect(g).toContain('queue/{批次}/{任务目录}/outputs/');
     expect(g).toContain('用户自组织区（自由命名，taskq 不碰）');
     expect(g).toContain('materials/ 素材（split/pipeline 入口）');
   });
+  it('字段速览：SPEC.md 人话版字段说明（三必填 + 可选字段）', () => {
+    const g = guideText();
+    expect(g).toContain('任务规格字段速览');
+    expect(g).toContain('· goal');
+    expect(g).toContain('这任务要干什么');
+    expect(g).toContain('· acceptance');
+    expect(g).toContain('怎么算做完');
+    expect(g).toContain('taskq help spec');
+    expect(g).toContain('执行计划');
+    expect(g).toContain('overview/PLAN.md');
+  });
   it('FAQ 覆盖高频疑问（docs 能删吗/12 拦截/换会话续跑/重跑/素材放哪）', () => {
     const g = guideText();
-    expect(g).toContain('跑完任务多了个 outputs/，能删吗');
+    expect(g).toContain('任务目录里多了个 outputs/，能删吗');
     expect(g).toContain('run 被拦截（退出码 12）怎么办');
     expect(g).toContain('换会话/换工具怎么接着跑');
     expect(g).toContain('想重跑某个任务');
@@ -95,7 +120,7 @@ describe('init 输出引导：目录布局摘要 + guide 指向', () => {
     const out = initCommand(makeCfg().projectRoot);
     expect(out).toContain('项目目录布局（taskq 只管理 queue/，其余不碰）');
     expect(out).toContain('队列本体（批次/任务/状态账本）');
-    expect(out).toContain('产出总仓（镜像队列层级）');
+    expect(out).toContain('产出院落（产出与任务同住）');
     expect(out).toContain('用户自组织区：名字随你');
     expect(out).toContain('taskq help guide');
   });

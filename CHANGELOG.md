@@ -1,5 +1,13 @@
 # CHANGELOG
 
+**v0.2.39：产出落位归巢（任务目录内 outputs/）+ 任务规格字段说明书 + 六页暗色换装**：
+
+- **产出落位归巢（方向性修正）**：默认产出不再镜像到项目根 outputs/{批次}/{任务目录}/，而是住进任务自己的 outputs/（queue/{批次}/{任务目录}/outputs/，产出与任务同住）——文档类精确落 {slug}.md，代码/data 类落院落不猜文件名；优先级三级：任务描述/SPEC.md 明确指定路径 > 用户改过的 output 字段 > 任务目录内 outputs/ 默认；fixer/clarify 调用链全量传 root（相对路径落位），help/guide/init 文案与 README/docs 六篇同步，「镜像队列层级」旧词清零；examples 现场三任务双形态实测（指定 data/ 不被碰、清空 output 默认落位落盘 + fix-log 留痕 + sources/ 归档）
+- **任务规格字段说明书（人话版）**：新增 taskq help spec 终端入口——SPEC.md 每个字段大白话翻译（档案卡/正文两分法、三必填 goal/output/acceptance 逐条讲、八可选字段带改法示例、改法三板斧：编辑器直改 / fix --yes 代劳 / sources 归档可找回）；HTML 引导页与 help guide 加「任务规格字段速览」节（字段/大白话/必填三列表格，code 胶囊样式）；docs/spec-format.md 加人话版速查表；引导页文案五件套补齐「字段速览」
+- **六页暗色换装（SpecCore DNA）**：新建 html-theme.ts 共享暗色主题（深蓝底 + 青紫渐变 + 扫描线背景层），clarify/panel/report/assessment/plan/guide 六个 HTML 生成器统一换装；文档引用路径归位 queue/reports/GUIDE.html，「三档红黄灰」→「四档红黄灰靛」描述同步
+- 文档同步：README、docs 七份（commands/directory-layout/queue-structure/relay-protocol/scenarios/spec-format 等）；测试 484（+6 守护：help spec 详情 / guide 字段速览 / HTML 字段速览节 / fix 留痕补 root / 全量断言镜像路径改归巢路径）
+
+
 **产出落位镜像队列层级：outputs/ 单一产出总仓 + 批次防线三刀（出生证明/拦截落账/SKILL 防错）**：
 
 - **产出总仓 outputs/ 镜像队列层级**：默认产出不再按类型归位（docs/data/research…），统一进 outputs/{批次}/{任务目录}/，与 queue/ 同构（task-/module-/模块子任务层级原样保留）；任务 SPEC.md 的 output 或描述里明确指定的路径仍最高优先；类型定义（task-type）删 outputDir、批次配置（batch-config）删 output-dirs/nest-outputs 两键——类型只管形态与约束，不再决定落点

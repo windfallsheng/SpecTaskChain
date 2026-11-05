@@ -4,6 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { toSlug, hasCJK, isPlaceholderSlug, hasNonAscii, slugFromDir } from '../../src/core/task-naming';
 import { newCommand } from '../../src/commands/new';
+import { readOpLog } from '../../src/core/oplog';
 import { recognizeIntent } from '../../src/core/intent';
 import { detectTaskIssues, detectDuplicateNames } from '../../src/core/clarify';
 import { scanQueue } from '../../src/core/queue';
@@ -79,7 +80,8 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '整理会议纪要', draft: true });
     expect(out).toContain('[TASKQ_PROMPT]');
-    expect(out).toContain('请英译后带 --name 续跑');
+    expect(out).toContain('请英译为英文 slug');
+    expect(out).toContain('能英译就不要降级');
     expect(out).toContain('taskq new "整理会议纪要" --name "english-slug"');
     // 不建任何任务目录：拦截发生在建目录之前
     expect(existsSync(join(root, 'queue', 'batch-001'))).toBe(false);
@@ -98,6 +100,18 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     newCommand(cfg(root), { goal: '整理会议纪要', name: 'zhenglihuiyijiyao', draft: true });
     expect(existsSync(join(root, 'queue', 'batch-001', 'task-zhenglihuiyijiyao', 'SPEC.md'))).toBe(true);
+  });
+
+  it('op-log 记名字来源：外部 --name 指定 vs CLI 自动提取可审计', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    const c = cfg(root);
+    newCommand(c, { goal: '整理会议纪要', name: 'meeting-notes', draft: true });
+    newCommand(c, { goal: '写 MySQL 慢查询分析脚本', draft: true }); // 自动提取 mysql
+    const log = readOpLog(c);
+    const byName = log.find((e) => e.target === 'task-meeting-notes');
+    const byAuto = log.find((e) => e.target === 'task-mysql');
+    expect(byName?.note).toContain('外部指定 --name=meeting-notes');
+    expect(byAuto?.note).toContain('自动提取 mysql');
   });
 
   it('goal 含拉丁片段 → 不拦截，直接提取（写 MySQL 慢查询 → mysql）', () => {

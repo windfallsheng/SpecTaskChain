@@ -177,7 +177,7 @@ export function renderBatchConfig(overrides: Partial<BatchConfig> = {}): string 
     '# 临时覆盖（仅当次生效，不写回本文件）：taskq fix --no-overwrite 关闭一次 或  taskq fix --overwrite 强制覆盖',
     `overwrite: ${c['overwrite']}`,
     '#',
-    '# 产出落位：任务做完产出进 outputs/{批次}/{任务目录}/（镜像队列层级，产出总仓只有一个）。',
+    '# 产出落位：默认住任务目录内 outputs/（产出与任务同住）；任务描述明确指定或改过 output 字段时按指定走。',
     '# 任务 SPEC.md 的 output 或描述里明确指定的路径永远优先，不受默认落位影响。',
     '# 计划落盘形态（taskq plan 的产出）：',
     '#   md = 只落 .md 底稿（默认）；html = md + 同院视觉 HTML 页（双击即看）；none = 只终端输出不落盘，',

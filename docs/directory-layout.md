@@ -17,24 +17,22 @@ queue/
 
 完整规则见 [queue-structure.md](queue-structure.md)。
 
-## 第二类：产出总仓（outputs/）——镜像队列层级
+## 第二类：产出院落（任务目录内 outputs/）——产出与任务同住
 
-`outputs/` 与 `queue/` **同构**：每个任务的产出落在与队列目录同名同路径的镜像院落里。想看哪个批次的产出，照队列找同路径即可：
+每个任务的产出默认落在**自己的任务目录内 `outputs/`**——哪个任务的货一眼即知，删任务目录连带清产出：
 
 ```
 queue/batch-002/task-xiewendang/SPEC.md
-      ↓ 镜像
-outputs/batch-002/task-xiewendang/xiewendang.md
+queue/batch-002/task-xiewendang/outputs/xiewendang.md   ← 文档类精确到 {slug}.md
 
 queue/batch-003/module-budget/yusuan-cesuan/SPEC.md
-      ↓ 镜像（模块子任务层级也一致）
-outputs/batch-003/module-budget/yusuan-cesuan/cesuan-baogao.md
+queue/batch-003/module-budget/yusuan-cesuan/outputs/    ← 代码/数据类不猜文件名，落院落目录
 ```
 
 两条规则：
 
-- **用户指定最高优先**：任务描述里明确说了产出位置（「写到 docs/xx.md」「生成到 src/auth/」）→ 按指定走；没说 → 镜像落位兜底。类型只影响任务形态与默认约束，不再决定落点。
-- **照队列找同路径即见产出**：多批次并行也不混——batch-002 的产出只在 `outputs/batch-002/`，batch-003 的只在 `outputs/batch-003/`。目录按需出现：跑了哪个任务，镜像院落里就长出哪个任务目录。
+- **用户指定最高优先**：任务描述里明确说了产出位置（「写到 docs/xx.md」「生成到 src/auth/」）或手动改过 output 字段 → 按指定走；都没说 → 任务目录内 `outputs/` 兜底。类型只影响任务形态与默认约束，不再决定落点。
+- **产出与任务同住**：多批次并行也不混——batch-002 的产出只在 batch-002 各任务目录里，batch-003 的只在 batch-003。目录按需出现：跑了哪个任务，哪个任务目录里就长出 `outputs/`。
 
 ## 第三类：用户自组织区（materials/ specs/ logs/ …）——你说了算
 
@@ -55,19 +53,18 @@ outputs/batch-003/module-budget/yusuan-cesuan/cesuan-baogao.md
 项目根/
 ├── materials/      ← 第三类：入口素材（source-1.md …）
 ├── queue/          ← 第一类：队列本体（taskq 管）
-├── outputs/        ← 第二类：产出总仓（镜像队列层级）
-│   └── batch-001/  ←     批次目录（与 queue/ 同名）
-│       ├── task-chenhui-jiyao/   ← 任务院落（与队列任务同名）
-│       │   └── chenhui-jiyao.md
+│   └── batch-001/  ←     批次目录
+│       ├── task-chenhui-jiyao/          ← 任务目录
+│       │   └── outputs/chenhui-jiyao.md  ← 第二类：产出院落（产出与任务同住）
 │       └── task-jidu-yusuan/
-│           └── jidu-yusuan.csv
+│           └── outputs/jidu-yusuan.csv
 └── specs/          ← 第三类：手写规格与参考资料
 ```
 
 ## 常见疑问
 
-**跑完任务多了个 outputs/batch-xxx/，能不能删？** 那是任务产出，删了验收就缺货（产物门禁核对文件在不在）。不需要再删。
+**任务目录里多了个 outputs/，能不能删？** 那是任务产出，删了验收就缺货（产物门禁核对文件在不在）。不需要再删。
 
 **为什么 materials/ 没人管？** 因为它是你的自由区。taskq 只关心你把它指给谁：split 拆它、pipeline 吃它。
 
-**产出不想进镜像，想落到别处？** 在任务描述里明确写产出路径（「写到 build/xx.md」）即可——用户指定最高优先；或建任务后编辑 SPEC.md 的 `output` 字段。
+**产出不想落任务目录，想落到别处？** 在任务描述里明确写产出路径（「写到 build/xx.md」）即可——用户指定最高优先；或建任务后编辑 SPEC.md 的 `output` 字段。

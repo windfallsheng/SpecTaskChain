@@ -2,6 +2,7 @@
 // 双形态：QUEUE_REPORT.md（终端/文档）+ REPORT.html（复盘可视化，taskq report --html）
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
+import { DARK_CSS, SCAN_CSS, SCAN_LAYERS } from './html-theme';
 import { TaskQConfig, readState } from './config';
 import { scanQueue, buildExecutionSequence } from './queue';
 import { verdictPassed } from './acceptance';
@@ -223,26 +224,12 @@ export function generateReportHtml(cfg: TaskQConfig, opts: ReportOptions = {}): 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SpecTaskChain 执行报告</title>
 <style>
-body{font-family:'PingFang SC','Hiragino Sans GB',sans-serif;margin:40px auto;max-width:880px;padding:0 20px;color:#1e293b;background:#f8fafc}
-h1{font-size:26px;margin-bottom:4px}
-.sub{color:#64748b;font-size:13px;margin-bottom:20px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
-.stat{background:#fff;border-radius:10px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}
-.stat .num{font-size:26px;font-weight:700}
-.stat .lab{font-size:12.5px;color:#64748b;margin-top:2px}
-h2{margin-top:28px;font-size:18px;border-bottom:2px solid #e2e8f0;padding-bottom:6px}
-table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-th,td{padding:9px 12px;text-align:left;font-size:13.5px;border-bottom:1px solid #f1f5f9}
-th{background:#f1f5f9;color:#475569;font-weight:600}
-.zone{background:#fff;border-radius:10px;padding:12px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:14px;margin:8px 0}
-.fail{background:#fff;border-left:4px solid #ef4444;border-radius:10px;padding:10px 16px;margin:8px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.fail b{color:#dc2626}
-.fail p{margin:4px 0 0;font-size:13px;color:#64748b}
-.retry{background:#fff;border-radius:10px;padding:10px 16px;margin:8px 0;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:14px;color:#b45309}
-footer{margin-top:32px;color:#94a3b8;font-size:12.5px}
+${DARK_CSS}${SCAN_CSS}
+body{margin:40px auto;max-width:880px;padding:0 20px;position:relative;z-index:1}
 </style>
 </head>
 <body>
+${SCAN_LAYERS}
 <h1>📊 队列执行报告</h1>
 <div class="sub">${cond ? `筛选范围：${esc(cond)} · ` : ''}生成于 ${new Date().toLocaleString('zh-CN')}</div>
 <div class="stats">

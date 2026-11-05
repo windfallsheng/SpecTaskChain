@@ -62,7 +62,7 @@ taskq new <描述> [--name 目录名] [--type 类型] [--group 模块名] [--due
 | 参数 | 说明 |
 | :--- | :--- |
 | `<描述>` | 任务目标（用户原话，写入 goal） |
-| `--name` | 任务名：英文直接作目录 slug；中文转全拼（如 迁移文档 → qianyiwendang）同时原样写入 frontmatter `name` 显示名。缺省 `task-序号`（取当前最大编号 +1） |
+| `--name` | 任务名：英文直接作目录 slug；缺省从描述提取——含英文词自动提取，纯中文时 CLI 输出 `[TASKQ_PROMPT]` 请求宿主 AI 英译（英文优先，拼音仅兜底），提不出才用 `task-序号`；名字同时写入 frontmatter `name` 显示名 |
 | `--type` | 任务类型（缺省 general，8 内置类型见 [queue-structure.md](queue-structure.md#任务类型)） |
 | `--group` | 模块名——建为模块子任务（共享 spec 的院落，自动创建 CONSTRAINTS.md 模板；模块名同样 slug 化，中文显示名记入模板标题） |
 | `--draft` | 静默落盘 draft 骨架，不请求 AI 草案 |
@@ -87,7 +87,7 @@ taskq clarify [--task 任务ID] [--file SPEC路径] [--chain] [--html] [--decide
 | `--task <id>` | 体检单个任务（写完查） |
 | `--file <path>` | 体检任意 SPEC.md 文件（未入队也行） |
 | `--chain` | 链级体检（建链查）：依赖悬空 + 产出冲突 + 模块约束 + 命名重复 + 循环依赖——只查链执行必翻车的硬伤，不逐任务报三必填（建链前任务可能还没写完） |
-| `--html` | 体检报告可视化：queue/CLARIFY.html（三档红黄灰分组卡片，推荐方案置顶带评分徽章） |
+| `--html` | 体检报告可视化：queue/reports/CLARIFY.html（四档红黄灰靛分组卡片，推荐方案置顶带评分徽章） |
 | `--no-report` / `--report` | 报告开关（临时）：本次不生成澄清评估报告 / 强制生成（覆盖批次配置 `reports: false`）；缺省走配置链 |
 | `--decide` | 判断题通道（exec 档专属）：TTY 下逐项裁决 y 采纳当前方案 / n 换下一个方案 / s 跳过；采纳写回 SPEC.md frontmatter `decisions` 留痕，下次体检跳过已决信号；非 TTY 只提示不等待 |
 | （无参数） | 全队列体检（翻车查）：链级硬伤 + 各任务三必填全量；结束后后台生成澄清评估报告（MD+HTML 落批次 overview/reports/，不阻断终端输出） |
@@ -218,7 +218,7 @@ taskq status [--panel]
 ```
 
 - 无参数：文本总览（done / failed / doing / todo 计数 + 模块一览 + 下一个接力任务）。
-- `--panel`：生成 HTML 可视化面板。
+- `--panel`：生成 HTML 可视化面板——按批次落盘 `dashboard-{批次}.html`（可并存），`PANEL.html` 为最新批次快捷入口（meta refresh 指向，不覆盖看板本体）；五态统计卡 + 类型分布 + 工时对账 + 优先级/逾期维度。
 
 ## taskq report
 
@@ -230,7 +230,7 @@ taskq report [--batch 批次] [--status 状态] [--type 类型] [--html]
 
 | 参数 | 说明 |
 | :--- | :--- |
-| `--html` | 复盘报告可视化：queue/REPORT.html（状态分布 + 执行记录 + 失败红卡） |
+| `--html` | 复盘报告可视化：queue/reports/REPORT.html（状态分布 + 执行记录 + 失败红卡） |
 
 工时账：预估总工时 / 实际总工时（done 时 `--spent` 登记）/ 预估 vs 实际差值（超支+/省时-/持平）+ 偏差明细 / 逾期清单（`--due` 到期未完成，红标在 list）。
 
@@ -249,7 +249,7 @@ taskq history [--batch 批次] [--task ID] [--since 日期] [--limit N]
 | `--since 今天\|昨天\|YYYY-MM-DD` | 时间窗（口语日期自动转 YYYY-MM-DD；UTC 日界含当天） |
 | `--limit N` | 显示最近 N 条（默认 30；`--limit 0` = 全量；超量时末尾提示总数） |
 
-只记写操作（new/run/execute/done/reset 五类自动留痕），只读命令（list/status/report）不记——流水不被刷屏淹没。数据落 `.taskchain/op-log.json`（JSONL 追加式，损坏行局部跳过）。
+只记写操作（new/run/execute/done/reset 五类自动留痕），只读命令（list/status/report）不记——流水不被刷屏淹没。**成功与拦截同账**：批次不存在、定向无匹配、批内拦停等拦截也落账（note 带 ❌/⛔ 前缀），拦截历史一处可查。数据落 `.taskchain/op-log.json`（JSONL 追加式，损坏行局部跳过）。
 
 与 report 分工：report 按任务聚合总账（这个任务的一生），history 按时间线回放流水（这个队列的一天）。
 
@@ -306,17 +306,17 @@ taskq ask "上一批继续跑"                # 相对位次：run 定向上一�
 taskq help                 # 总览：命令表 + 目录布局 + 核心概念
 taskq help guide           # 引导页（上手三步 + 三类目录 + FAQ）
 taskq help <命令>          # 单命令详情（如 taskq help run）
-taskq help guide --html    # 生成 HTML 引导页 queue/GUIDE.html（双击即看）
+taskq help guide --html    # 生成 HTML 引导页 queue/reports/GUIDE.html（双击即看）
 ```
 
-> HTML 引导页 `queue/GUIDE.html`：`taskq init` 自动生成（输出含 `[TASKQ_GUIDE: <path>]` 标记，宿主 AI 展示给用户）；内容 = 上手三步 + 目录布局 + 命令速查 + 核心概念 + 常见问题，与 `taskq status --panel` 生成的 PANEL.html 同院。
+> HTML 引导页 `queue/reports/GUIDE.html`：`taskq init` 自动生成（输出含 `[TASKQ_GUIDE: <path>]` 标记，宿主 AI 展示给用户）；内容 = 上手三步 + 目录布局 + 命令速查 + 核心概念 + 常见问题，与 `taskq status --panel` 生成的 PANEL.html 同院。
 
-### HTML 页面体系（都长在 queue/ 下，双击即看）
+### HTML 页面体系（都长在 queue/reports/ 下，双击即看，SpecCore 同源暗色科技风：深蓝底 + 青紫渐变 + 扫描线网格）
 
 | 页面 | 入口 | 旅程位置 |
 | :--- | :--- | :--- |
 | GUIDE.html | init 自动生成 / `help guide --html` | 进门——工具说明书 |
-| PANEL.html | `status --panel` | 现状——队列仪表盘 |
-| CLARIFY.html | `clarify --html` | 问题——体检报告（三档红黄灰分组） |
+| dashboard-{批次}.html + PANEL.html（最新批次快捷入口） | `status --panel` | 现状——队列仪表盘（按批次落盘可并存） |
+| CLARIFY.html | `clarify --html` | 问题——体检报告（四档红黄灰靛分组） |
 | REPORT.html | `report --html` | 复盘——执行账本（状态分布 + 失败红卡） |
 | 批次 overview/reports/ 下的 CLARIFY_REPORT / DONE_REPORT（MD+HTML） | 全量澄清 / 队列清空后自动生成（后台不阻断） | 档案——澄清评估与完成评估（每任务 + 总体评级） |

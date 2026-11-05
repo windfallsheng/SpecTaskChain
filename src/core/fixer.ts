@@ -23,13 +23,13 @@ export interface FixItem {
   after: string;       // 将写入的内容（行级编辑按 kind 应用）
 }
 
-/** 按类型推断产出路径：委托 defaultOutputFor（镜像 outputs/{批次}/{任务目录}/ 同源）；代码类型/data 返回院落目录（扩展名不可断定） */
-export function inferOutputPath(spec: TaskSpec, typeDef: TaskTypeDefinition): string {
-  return defaultOutputFor(spec, typeDef);
+/** 按类型推断产出路径：委托 defaultOutputFor（默认住任务目录内 outputs/ 院落）；代码类型/data 返回院落目录（扩展名不可断定） */
+export function inferOutputPath(spec: TaskSpec, typeDef: TaskTypeDefinition, root?: string): string {
+  return defaultOutputFor(spec, typeDef, root);
 }
 
 /** 计算单任务的 A 档修复项（纯函数，不落盘） */
-export function computeFixes(spec: TaskSpec, typeDef: TaskTypeDefinition): FixItem[] {
+export function computeFixes(spec: TaskSpec, typeDef: TaskTypeDefinition, root?: string): FixItem[] {
   const items: FixItem[] = [];
 
   // role：类型映射专职角色；generalist 是通才兜底，不写（保留 AI 自动选择）
@@ -50,7 +50,7 @@ export function computeFixes(spec: TaskSpec, typeDef: TaskTypeDefinition): FixIt
   let effectiveOutput = (spec.output || '').trim();
   if (!effectiveOutput) {
     const stated = extractStatedPaths(`${spec.goal}\n${spec.body}`)[0] || '';
-    const inferred = stated || inferOutputPath(spec, typeDef);
+    const inferred = stated || inferOutputPath(spec, typeDef, root);
     if (inferred) {
       effectiveOutput = inferred;
       items.push({
@@ -58,7 +58,7 @@ export function computeFixes(spec: TaskSpec, typeDef: TaskTypeDefinition): FixIt
         kind: 'output',
         description: stated
           ? `补 output: ${inferred}（按任务描述指出的产出位置）`
-          : `补 output: ${inferred}（镜像队列层级推断）`,
+          : `补 output: ${inferred}（默认落位：任务目录内 outputs/）`,
         before: 'output: （空）',
         after: `output: ${inferred}`,
       });

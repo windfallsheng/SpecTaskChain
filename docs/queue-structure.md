@@ -17,8 +17,8 @@ queue/
 │       ├── CONSTRAINTS.md    ← 模块公共约束（每次执行子任务前重读；顶部可加 name/purpose/created-at 元数据）
 │       └── denglujiekou/     ← 第三层子任务：目录名 = 任务 ID（无 task- 前缀）
 │           └── SPEC.md
-├── batch-002/               ← 下次要做的另一批任务（mkdir 手工建，建完即插队为最新批次）
-├── GUIDE.html               ← HTML 引导页（init 生成；同院兄弟：PANEL/CLARIFY/REPORT.html）
+├── batch-002/               ← 下一批任务（由 taskq new 创建，自动带出生证明 config/BATCH.yaml；先 mkdir 空壳再建任务的旁门被拦截）
+├── reports/                ← 队列级视图（GUIDE/PANEL/CLARIFY/REPORT.html + QUEUE_REPORT.md；init 自动生成 GUIDE.html）
 └── .taskchain/
     ├── state.json            ← 状态文件
     ├── TASK_TYPES/           ← 自定义任务类型定义
@@ -28,14 +28,14 @@ queue/
 
 规则：
 
-- **批次目录 = 「一次要做的所有任务」的容器**：`batch-{NNN}`（NNN 三位补零）。下次要用再建下一个（`mkdir queue/batch-002`），可建任意多个。旧式 `tasks/` 兼容为第 0 批（老项目继续工作）。
+- **批次目录 = 「一次要做的所有任务」的容器**：`batch-{NNN}`（NNN 三位补零）。批次由 `taskq new` 创建（自动带出生证明 `config/BATCH.yaml`，旧位置批次根 `BATCH.yaml` 也认）——先 `mkdir queue/batch-002` 空壳再建任务的旁门被拦截（空壳目录扫描时不认作批次，`new --batch` 指向空壳报「批次不存在」）。旧式 `tasks/` 兼容为第 0 批（老项目继续工作）。
 - **聚焦语义**：`taskq run`/`status` 默认只聚焦最新批次（数字序最大者；无 batch-* 时 tasks 兜底）；`taskq new` 默认把新任务落最新批次；老批次用 `--batch <批次名>` 手动指定，`--batch all` 全批次。
 - **任务 ID = 目录名**（如 `task-xiewendang`、`module-auth/denglujiekou` 的子任务 ID 是 `denglujiekou`）。
 - **重名拼短 hash**：CLI 新建时若队列中已有同 ID（跨批次/跨模块），自动拼内容短 hash 区分（`task-xiewendang-7d56cb`，sha1 前 6 位，同内容幂等）——任务 ID 全局唯一，state.json 的键永不撞车；同名同内容重复建两次后第三次报错提示换名。
 - 顶层含 `SPEC.md` 的目录是任务；否则按模块目录扫描（`CONSTRAINTS.md` + 第三层子任务）。
-- **命名仪式**：CLI 新建时任务目录 = `task-{slug}`（普通任务同 `task-` 前缀——参考模块 `module-` 前缀的效果，`task-` 打头一眼区分于模块目录；不带序号、不关注目录顺序；`--name` 优先，已带 `task-` 前缀则尊重原样不叠加；无 `--name` 时从 goal 提取语义 slug，中文转全拼，提不出用任务类型键兜底——`task-script` 而非 `task`）；模块目录 = `module-{slug}`（语义化前缀，已带前缀不叠加）；批次目录 = `batch-{NNN}`。用户手工建的目录不受仪式约束——扫描只认结构（有无 SPEC.md），名字叫什么都认。
+- **命名仪式**：CLI 新建时任务目录 = `task-{slug}`（普通任务同 `task-` 前缀——参考模块 `module-` 前缀的效果，`task-` 打头一眼区分于模块目录；不带序号、不关注目录顺序；`--name` 优先，已带 `task-` 前缀则尊重原样不叠加；无 `--name` 时从 goal 提取语义 slug：含英文词自动提取；纯中文时 CLI 输出 `[TASKQ_PROMPT]` 请求宿主 AI 英译（英文优先，拼音仅兜底）；提不出用任务类型键兜底——`task-script` 而非 `task`）；模块目录 = `module-{slug}`（语义化前缀，已带前缀不叠加）；批次目录 = `batch-{NNN}`。用户手工建的目录不受仪式约束——扫描只认结构（有无 SPEC.md），名字叫什么都认。
 - 任务目录内可自由放置材料文件（图片、数据等）：在 SPEC.md 正文中引用（`[标题](相对路径)` 或裸路径），执行时由 CLI 消解为真实内容嵌入 prompt（基准 = 项目根）；引用的文件不存在会报阻塞，绝不静默跳过。
-- 代码与产出**不在任务目录内**：产出落在 SPEC.md 的 `output` 声明的项目根路径——默认镜像 `outputs/{批次}/{任务目录}/`（与队列同构，含模块子任务层级）；任务描述里明确指定路径时按指定走。任务目录只放规格。
+- 产出默认**住任务目录内 outputs/**：产出落在 SPEC.md 的 `output` 声明的路径——默认任务目录内 `outputs/{slug}.md`（代码/数据类落院落目录不猜文件名，含模块子任务层级）；任务描述里明确指定路径或手动改过 output 字段时按指定走。任务目录 = 规格 + outputs/（其余材料文件也可自由放置）。
 
 ## 任务模块（共享 spec 的院落）
 
@@ -159,13 +159,13 @@ depends-on:
 | 类型 | 代码形态 | 默认产出 | 说明 |
 | :--- | :--- | :--- | :--- |
 | `general` | 否 | `outputs/{批次}/{任务目录}/` | 通用任务（缺省回退） |
-| `doc` | 否 | 同上（镜像队列层级） | 文档写作 |
-| `script` | 是 | 同上（镜像队列层级） | 脚本编写 |
-| `data` | 否 | 同上（镜像队列层级） | 数据整理 |
-| `research` | 否 | 同上（镜像队列层级） | 调研分析 |
-| `presentation` | 否 | 同上（镜像队列层级） | 演示稿 |
-| `feature` | 是 | 同上（镜像队列层级） | 功能开发 |
-| `bugfix` | 是 | 同上（镜像队列层级） | 缺陷修复 |
+| `doc` | 否 | 同上（任务目录内 outputs/） | 文档写作 |
+| `script` | 是 | 同上（任务目录内 outputs/） | 脚本编写 |
+| `data` | 否 | 同上（任务目录内 outputs/） | 数据整理 |
+| `research` | 否 | 同上（任务目录内 outputs/） | 调研分析 |
+| `presentation` | 否 | 同上（任务目录内 outputs/） | 演示稿 |
+| `feature` | 是 | 同上（任务目录内 outputs/） | 功能开发 |
+| `bugfix` | 是 | 同上（任务目录内 outputs/） | 缺陷修复 |
 
 自定义类型：`.taskchain/TASK_TYPES/{类型}.md`（YAML frontmatter）：
 
@@ -182,7 +182,7 @@ description: 内部工具开发
 
 ## 执行角色（可选：type 管形态，role 管专业）
 
-`role` 与 `type` 正交：type 管「产出什么形态」（代码与否/默认约束；产出落点由任务描述或镜像推断定，类型不再决定落点），role 管「以什么专业身份干」（角色立场/专业关注点/角色禁忌，执行时注入 prompt）。
+`role` 与 `type` 正交：type 管「产出什么形态」（代码与否/默认约束；产出落点由任务描述指定，缺省落任务目录内 outputs/，类型不再决定落点），role 管「以什么专业身份干」（角色立场/专业关注点/角色禁忌，执行时注入 prompt）。
 
 - **内置角色**（10 个，命名语义化 + 专业化）：generalist（通才兜底）/ document-writer（文档写作）/ code-engineer（代码工程）/ debug-engineer（缺陷修复）/ test-engineer（测试工程）/ security-reviewer（安全审查）/ devops-engineer（运维工程）/ data-analyst（数据分析）/ research-analyst（调研分析）/ presentation-designer（演示设计）。旧名（doc-writer/coder/tester/ops/analyst/designer）走别名零感知兼容
 - **自定义角色**：`.taskchain/ROLES/{角色}.md`（YAML frontmatter：stance/focus/taboos/description/applies-to），与 TASK_TYPES 同模式；同名自定义角色覆盖内置（用户压过系统）

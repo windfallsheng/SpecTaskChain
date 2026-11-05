@@ -9,12 +9,34 @@
     └── 正文（自由，执行时全文注入 prompt）
 ```
 
+## 人话版速查（给非技术同学）
+
+SPEC.md 分两半：上半部 `---` 夹着的是**档案卡**（机器读的硬指标），下半部是**正文**（AI 读的自由描述，白话随便写）。
+
+| 字段 | 大白话 | 必填 | 怎么改 |
+| :--- | :--- | :--- | :--- |
+| `goal` | 这任务要干什么 | ✅ | 一句话目标，如「把上季销售数据整理成周报」 |
+| `output` | 成果放在哪 | ✅ | 不写也认——默认落任务目录内 outputs/；写路径 = 指定位置，如 `data/kehu-master-clean.csv` |
+| `acceptance` | 怎么算做完 | ✅ | 三步验收至少填一样：artifacts 交什么货 / checks 怎么验 / review 怎么评 |
+| `name` | 任务的人名 | 可选 | 显示用，可中文，如「客户数据清洗」 |
+| `type` | 任务形态 | 可选 | doc 写文档 / data 理数据 / script 写脚本 / research 调研 / presentation 演示 / feature 功能 / bugfix 修缺陷；不写默认 general |
+| `role` | 谁来干 | 可选 | 不写由 AI 按内容挑；想固定就写，如 document-writer |
+| `priority` | 轻重缓急 | 可选 | P0 最急 / P1 / P2 |
+| `tags` | 分类标签 | 可选 | 筛任务用，如 `[客户, 数据质量]` |
+| `estimate` | 预计工时 | 可选 | 小时数，如 6 |
+| `created-at` | 建档日期 | 可选 | new 自动落，不用管 |
+| `draft` | 草稿标记 | 可选 | true = 还没补全，run 会拦；补全后删掉这行 |
+| `depends-on` | 排队关系 | 可选 | 写任务 ID，表示等前面的先做完 |
+| （计划）PLAN.md | 一批任务的执行顺序表 | 可选 | `taskq plan` 生成（execute 先谋后动自动落），落批次 overview/PLAN.md（命名计划在 overview/plans/）；直接编辑器改；重列 `taskq plan --replan` |
+
+怎么改：直接编辑器改 SPEC.md；机械项（补 output/acceptance/role、摘 draft）`taskq fix --yes` 代劳，改前自动归档 `sources/`。计划（PLAN.md）直接编辑器改、`taskq plan --replan` 重列。终端速查：`taskq help spec`。
+
 ## frontmatter 字段
 
 | 字段 | 必填 | 说明 |
 | :--- | :--- | :--- |
 | `goal` | ✅ | 目标，一句话也行（任务要做什么） |
-| `output` | ✅ | 产出位置（相对项目根的目录，如 `outputs/batch-002/task-hedui/`；任务描述里明确指定路径时按指定，如 `src/auth/`） |
+| `output` | ✅ | 产出位置（相对项目根；默认住任务目录内 outputs/，如 `queue/batch-002/task-hedui/outputs/hedui.md`；任务描述明确指定路径或手动改过时按指定，如 `src/auth/`） |
 | `acceptance` | ✅ | 验收三态：artifacts + checks + review（至少一项非空） |
 | `name` | 可选 | 显示名（人类可读，可中文）；目录名是 ASCII 机器身份，两者分工 |
 | `type` | 可选 | 任务类型，缺省 `general`（见 [queue-structure.md](queue-structure.md#任务类型)） |

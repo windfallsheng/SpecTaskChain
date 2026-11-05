@@ -2,6 +2,7 @@
 // 参考 speccore dashboard 的统计卡 + 类型分布思路；批次聚焦语义同 queueSummary（未指定聚焦最新批次，--batch all 全量）
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
+import { DARK_CSS, SCAN_CSS, SCAN_LAYERS } from './html-theme';
 import { TaskQConfig, readState } from './config';
 import { scanQueue, buildExecutionSequence, selectBatch, resolveDefaultBatch, latestBatchId } from './queue';
 
@@ -89,7 +90,7 @@ export function generatePanelHtml(cfg: TaskQConfig, batch?: string): string {
     .join('');
 
   const statCards = [
-    { label: '总任务', value: sequence.length, color: '#1e293b' },
+    { label: '总任务', value: sequence.length, color: '#bae6fd' },
     { label: '已完成', value: done.length, color: '#22c55e' },
     { label: '进行中', value: doing.length, color: '#3b82f6' },
     { label: '待办', value: sequence.length - done.length - doing.length - failed.length, color: '#94a3b8' },
@@ -105,37 +106,34 @@ export function generatePanelHtml(cfg: TaskQConfig, batch?: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SpecTaskChain 批次看板</title>
 <style>
-body{font-family:'PingFang SC','Hiragino Sans GB',sans-serif;margin:40px auto;max-width:960px;padding:0 20px;color:#1e293b;background:#f8fafc}
-h1{font-size:26px;margin-bottom:4px}
-.sub{color:#64748b;font-size:13px;margin-bottom:20px}
+${DARK_CSS}${SCAN_CSS}
+body{margin:40px auto;max-width:960px;padding:0 20px;position:relative;z-index:1}
 .scards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
-.scard{flex:1;min-width:110px;background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}
-.snum{font-size:26px;font-weight:700}
-.slabel{color:#64748b;font-size:12px;margin-top:2px}
-.bar{height:14px;background:#e2e8f0;border-radius:7px;overflow:hidden;margin-bottom:8px}
-.fill{height:100%;background:linear-gradient(90deg,#3b82f6,#22c55e);border-radius:7px;transition:width .4s}
-.pct{font-weight:700;color:#1e293b;margin-bottom:16px}
-.ledger{background:#fff;border-radius:10px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:13px;color:#475569;margin-bottom:8px}
-h2{margin-top:28px;font-size:18px}
+.scard{flex:1;min-width:110px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;text-align:center}
+.snum{font-size:26px;font-weight:700;letter-spacing:1px}
+.slabel{color:var(--muted);font-size:12px;margin-top:2px}
+.bar{height:14px;background:rgba(14,165,233,.1);border-radius:7px;overflow:hidden;margin-bottom:8px}
+.fill{height:100%;background:linear-gradient(90deg,#0ea5e9,#14b8a6);border-radius:7px;transition:width .4s}
+.pct{font-weight:700;color:var(--text);margin-bottom:16px}
+.ledger{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:13px;color:var(--text);margin-bottom:8px}
+h2{margin-top:28px;font-size:17px}
 .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
-.tcard{background:#fff;border-radius:10px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:14px}
+.tcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:14px}
 .tdot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
-.tnum{color:#64748b;margin-left:8px;font-size:13px}
-.test{float:right;color:#94a3b8;font-size:12px}
-.tbar{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-top:8px}
+.tnum{color:var(--muted);margin-left:8px;font-size:13px}
+.test{float:right;color:var(--muted);font-size:12px}
+.tbar{height:6px;background:rgba(14,165,233,.1);border-radius:3px;overflow:hidden;margin-top:8px}
 .tfill{height:100%;border-radius:3px;transition:width .4s}
-.chip{display:inline-block;background:#fff;border-radius:20px;padding:4px 12px;margin:4px 6px 0 0;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.08);color:#475569}
-.chip-p0{color:#dc2626;font-weight:600}
-.chip-p1{color:#d97706;font-weight:600}
-.chip-p2{color:#2563eb}
-table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid #f1f5f9}
-th{background:#f1f5f9;color:#475569;font-weight:600}
-.overdue{color:#dc2626;font-weight:700}
-.mod{background:#fff;border-radius:10px;padding:12px 16px;margin:10px 0;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:14px}
+.chip{display:inline-block;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:4px 12px;margin:4px 6px 0 0;font-size:13px;color:var(--text)}
+.chip-p0{color:#f87171;font-weight:600}
+.chip-p1{color:#fbbf24;font-weight:600}
+.chip-p2{color:#60a5fa}
+.overdue{color:#f87171;font-weight:700}
+.mod{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin:10px 0;font-size:14px}
 </style>
 </head>
 <body>
+${SCAN_LAYERS}
 <h1>📋 SpecTaskChain 批次看板</h1>
 <div class="sub">${batch && batch !== 'all' ? `批次 <b>${esc(batch)}</b> · ` : ''}队列：${esc(cfg.queueDir)} · 生成于 ${new Date().toLocaleString('zh-CN')}</div>
 <div class="scards">${statCards}</div>

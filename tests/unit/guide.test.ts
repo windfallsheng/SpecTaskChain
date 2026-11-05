@@ -35,6 +35,18 @@ describe('HTML 引导页：内容章节与写盘', () => {
     expect(html).toContain('report --html');
   });
 
+  it('任务规格字段速览节：三必填 + 可选字段人话版表格', () => {
+    const html = guideHtml(makeCfg());
+    expect(html).toContain('任务规格字段速览');
+    expect(html).toContain('这任务要干什么');
+    expect(html).toContain('成果放哪');
+    expect(html).toContain('怎么算做完');
+    expect(html).toContain('taskq help spec');
+    expect(html).toContain('<code>depends-on</code>');
+    expect(html).toContain('执行计划（PLAN.md');
+    expect(html).toContain('先谋后动');
+  });
+
   it('命令速查表覆盖全部 13 个命令入口', () => {
     const html = guideHtml(makeCfg());
     for (const cmd of ['init', 'new', 'split', 'pipeline', 'clarify', 'run', 'execute', 'reset', 'done', 'list', 'status', 'report', 'ask']) {
@@ -45,11 +57,11 @@ describe('HTML 引导页：内容章节与写盘', () => {
   it('三类目录说明齐全（队列本体/产出落位映射/用户自组织区）', () => {
     const html = guideHtml(makeCfg());
     expect(html).toContain('队列本体');
-    expect(html).toContain('产出总仓');
+    expect(html).toContain('产出院落');
     expect(html).toContain('用户自组织区');
-    // 镜像落位抽查
-    expect(html).toContain('outputs/{批次}/{任务目录}/');
-    expect(html).toContain('outputs/{批次}/{模块}/{子任务}/');
+    // 默认落位抽查
+    expect(html).toContain('queue/{批次}/{任务目录}/outputs/');
+    expect(html).toContain('模块子任务同理');
     expect(html).toContain('materials/');
   });
 

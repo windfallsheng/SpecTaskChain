@@ -1,7 +1,7 @@
-// 产出物位置：用户指定优先，镜像推断兜底——clarify 体检与 fix 机械修复共用的单一事实来源
-// 规则：任务描述里明确说了产出位置（产出动词 + 路径）→ 按用户指定；没说 → 镜像队列层级落位
-// 镜像：产出总仓 outputs/ 与队列同构——queue/batch-003/task-hedui/ → outputs/batch-003/task-hedui/；
-// 模块子任务 queue/batch-003/module-budget/xxx/ → outputs/batch-003/module-budget/xxx/；旧式 tasks（第 0 批）→ outputs/tasks/xxx/
+// 产出物位置：用户指定优先，任务目录内 outputs/ 兜底——clarify 体检与 fix 机械修复共用的单一事实来源
+// 规则：任务描述里明确说了产出位置（产出动词 + 路径）→ 按用户指定；用户改过 output 字段 → 尊重；
+// 都没说 → 默认住任务目录内 outputs/ 子目录（产出与任务同住：哪个任务的货一眼即知，清任务连带清产出）
+import { relative } from 'path';
 import type { TaskSpec } from './task-spec';
 import { slugFromDir } from './task-naming';
 import type { TaskTypeDefinition } from './task-type';
@@ -31,22 +31,17 @@ export function extractStatedPaths(text: string): string[] {
   return found;
 }
 
-/** 产出落位镜像：任务目录的批次/任务层级平移到 outputs/ 下（目录名与队列完全一致，照队列找同路径即见产出） */
-export function mirrorOutputDir(spec: TaskSpec): string {
-  const parts = spec.dir.split(/[\\/]+/);
-  let idx = -1;
-  for (let i = parts.length - 1; i >= 0; i--) {
-    if (parts[i] === 'tasks' || /^batch-\d+$/.test(parts[i])) { idx = i; break; }
-  }
-  if (idx < 0) return 'outputs/';
-  return 'outputs/' + parts.slice(idx).join('/') + '/';
+/** 默认产出院落：任务目录内 outputs/ 子目录；root 提供时输出相对项目根的路径表达 */
+export function taskOutputDir(spec: TaskSpec, root?: string): string {
+  const rel = root ? relative(root, spec.dir) : spec.dir;
+  return `${rel}/outputs/`;
 }
 
-/** 默认落位：镜像院落目录；文档类（非代码非数据）再精确到院落内 {slug}.md 主产出文件。
+/** 默认落位：任务目录内 outputs/ 院落；文档类（非代码非数据）再精确到院落内 {slug}.md 主产出文件。
  * 代码/数据类型扩展名不可断定，返回院落目录（具体文件由宿主 AI/用户明确）。
- * 用户指定 output 的场景不经过这里——那是用户表达，最高优先级。 */
-export function defaultOutputFor(spec: TaskSpec, typeDef: TaskTypeDefinition): string {
-  const dir = mirrorOutputDir(spec);
+ * 用户指定 output 或任务描述明确落点的场景不经过这里——那是用户表达，最高优先级。 */
+export function defaultOutputFor(spec: TaskSpec, typeDef: TaskTypeDefinition, root?: string): string {
+  const dir = taskOutputDir(spec, root);
   if (typeDef.code || typeDef.name === 'data') return dir;
   const slug = slugFromDir(spec.id) || spec.id;
   return `${dir}${slug}.md`;

@@ -2,6 +2,7 @@
 // 依赖排序的执行引擎（buildExecutionSequence）已有，本模块负责「说给人听」：顺序 / 依赖边 / 模块分组 / 关键路径
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { DARK_CSS, SCAN_CSS, SCAN_LAYERS } from './html-theme';
 import { ExecutableTask, QueueScan } from './queue';
 import { TaskRunState } from './config';
 
@@ -219,26 +220,25 @@ function escHtml(t: string): string {
 }
 
 const PLAN_CSS = `
-body{font-family:'PingFang SC','Hiragino Sans GB',sans-serif;margin:40px auto;max-width:860px;padding:0 20px;color:#1e293b;background:#f8fafc;line-height:1.7}
-h1{font-size:26px;margin-bottom:4px}
-.sub{color:#64748b;font-size:13px;margin-bottom:22px}
+${DARK_CSS}${SCAN_CSS}
+body{margin:40px auto;max-width:860px;padding:0 20px;position:relative;z-index:1}
 .stats{display:flex;gap:14px;margin-bottom:22px;flex-wrap:wrap}
-.stat{background:#fff;border-radius:10px;padding:10px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:14px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 18px;font-size:14px}
 .stat b{font-size:18px;margin-right:4px}
-.bar{display:flex;height:10px;border-radius:6px;overflow:hidden;margin-bottom:22px}
+.bar{display:flex;height:10px;border-radius:6px;overflow:hidden;margin-bottom:22px;background:rgba(14,165,233,.1)}
 .bar div{height:100%}
-.card{background:#fff;border-radius:10px;padding:12px 18px;margin:12px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.card h3{font-size:15px;margin:6px 0 10px;color:#334155;display:flex;align-items:center;gap:8px}
-.row{padding:7px 0;border-top:1px solid #f1f5f9;font-size:13.5px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 18px;margin:12px 0}
+.card h3{font-size:15px;margin:6px 0 10px;color:var(--text);display:flex;align-items:center;gap:8px}
+.row{padding:7px 0;border-top:1px solid rgba(14,165,233,.08);font-size:13.5px}
 .row:first-of-type{border-top:none}
-.row .seq{display:inline-block;width:30px;color:#94a3b8;font-size:12px}
-.row b{color:#1d4ed8;font-weight:700}
-.row .goal{color:#475569;margin-left:8px}
-.row .dep{color:#b45309;font-size:12px}
-.row .st{float:right;font-size:12px;color:#64748b}
-.cp{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 12px;font-size:13.5px;color:#047857;margin:8px 0}
-.mod-tag{display:inline-block;background:#e0e7ff;color:#4338ca;font-size:11px;border-radius:6px;padding:1px 7px;margin-right:6px;font-weight:700}
-.badge{color:#fff;font-size:12px;border-radius:9px;padding:1px 8px;font-weight:700;background:#1d4ed8}
+.row .seq{display:inline-block;width:30px;color:var(--muted);font-size:12px}
+.row b{color:var(--cyan);font-weight:700}
+.row .goal{color:var(--text);margin-left:8px}
+.row .dep{color:#fdba74;font-size:12px}
+.row .st{float:right;font-size:12px;color:var(--muted)}
+.cp{background:rgba(20,184,166,.1);border:1px solid rgba(20,184,166,.35);border-radius:8px;padding:8px 12px;font-size:13.5px;color:#5eead4;margin:8px 0}
+.mod-tag{display:inline-block;background:rgba(99,102,241,.18);color:#a5b4fc;font-size:11px;border-radius:6px;padding:1px 7px;margin-right:6px;font-weight:700}
+.badge{color:#0b1929;font-size:12px;border-radius:9px;padding:1px 8px;font-weight:700;background:var(--cyan)}
 `.trim();
 
 const ST_ICON: Record<string, string> = { done: '✅', doing: '⏳', failed: '⛔', todo: '　' };
@@ -275,6 +275,7 @@ export function renderPlanHtml(model: PlanModel, opts: { name: string; batch?: s
 <style>${PLAN_CSS}</style>
 </head>
 <body>
+${SCAN_LAYERS}
 <h1>📋 计划：${escHtml(opts.name)}</h1>
 <div class="sub">${opts.batch ? `批次 ${escHtml(opts.batch)} · ` : ''}生成于 ${new Date().toLocaleString('zh-CN')}；执行顺序由 depends-on 拓扑排序决定</div>
 <div class="stats">

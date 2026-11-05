@@ -93,7 +93,7 @@ taskq fix --task task-xiesanpianqianyiwendang --dry-run   # 先预览处方
 ```
 🔧 可自动修复 3 处：
   [1] task-xiesanpianqianyiwendang：补 role: document-writer（按类型 doc 自动匹配）
-  [2] task-xiesanpianqianyiwendang：补 acceptance 三态骨架（产物=outputs/batch-001/task-xiesanpianqianyiwendang/；断言待填，评审待人工）
+  [2] task-xiesanpianqianyiwendang：补 acceptance 三态骨架（产物=queue/batch-001/task-xiesanpianqianyiwendang/outputs/；断言待填，评审待人工）
   [3] task-xiesanpianqianyiwendang：摘除 draft（三必填已齐，可以接力）
 
 --dry-run：预览不落盘。确认后：taskq fix --yes
@@ -126,7 +126,7 @@ taskq run
 ### 任务类型
 doc（非代码任务，与代码世界绝缘)
 ### 产出位置
-outputs/batch-001/task-xiesanpianqianyiwendang/
+queue/batch-001/task-xiesanpianqianyiwendang/outputs/
 …
 ```
 
@@ -146,7 +146,7 @@ taskq done task-xiesanpianqianyiwendang --verdict "pass 三篇文档已生成" -
 ✅ 「task-xiesanpianqianyiwendang」已登记完成（实际工时 4h）。继续接力：taskq run
 ```
 
-没过输出（产物门禁不实，比如镜像院落还没写出文件）：
+没过输出（产物门禁不实，比如任务目录内 outputs/ 还没写出文件）：
 
 ```
 ❌ 验收未通过（第 1/3 次尝试）。修正产出后重试：taskq done task-xiesanpianqianyiwendang --verdict "..."
@@ -158,7 +158,7 @@ taskq done task-xiesanpianqianyiwendang --verdict "pass 三篇文档已生成" -
 
 ```bash
 taskq report              # 文本账本：每次尝试、验收结论、工时偏差、逾期清单
-taskq report --html       # queue/REPORT.html 复盘报告（双击即看）
+taskq report --html       # queue/reports/REPORT.html 复盘报告（双击即看）
 ```
 
 至此手动路线闭环：**init → new → clarify → fix → run → done → report**。

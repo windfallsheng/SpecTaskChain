@@ -100,7 +100,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     }
     issues = detectTaskIssues(found, cfg.projectRoot, collectArtifacts(queue));
     // 单任务体检后顺手亮修复提示（A 档机械修）
-    const fixable = computeFixes(found, resolveTaskType(cfg.metaDir, found.type)).length;
+    const fixable = computeFixes(found, resolveTaskType(cfg.metaDir, found.type), cfg.projectRoot).length;
     fixHint = fixable ? `🔧 可自动修复 ${fixable} 处：taskq fix --task ${found.id}（--yes 应用 / --dry-run 预览）` : '';
   } else if (opts.chain) {
     // 建链前查：只查链级硬伤（建链前逐任务可能还没写完，不报三必填）
@@ -133,7 +133,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
       clarifyNotice = assessmentNotice(cfg.queueDir, report);
     }
     // 全量体检后亮修复提示（A 档机械修）
-    const fixable = allTasks.reduce((n, t) => n + computeFixes(t, resolveTaskType(cfg.metaDir, t.type)).length, 0);
+    const fixable = allTasks.reduce((n, t) => n + computeFixes(t, resolveTaskType(cfg.metaDir, t.type), cfg.projectRoot).length, 0);
     fixHint = fixable ? `🔧 可自动修复 ${fixable} 处：taskq fix（--yes 应用 / --dry-run 预览）` : '';
   }
 

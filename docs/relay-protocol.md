@@ -32,6 +32,7 @@ CLI 输出中的 `[TASKQ_*]` 块是给宿主 AI 的结构化交接信号，全�
 | 标记 | 出现场景 | 语义 |
 | :--- | :--- | :--- |
 | `[TASKQ_PROMPT]` / `[TASKQ_PROMPT_END]` | `run` / `execute` | 完整执行 prompt 块，宿主 AI 按块内容执行 |
+| `[TASKQ_PROMPT]` / `[TASKQ_PROMPT_END]` | `new`（纯中文 goal 且无 `--name`） | 英译接力：请求宿主 AI 把任务名英译为 slug（kebab-case），带 `--name` 续跑；英文优先，拼音仅兜底 |
 | `[TASKQ_SPEC_DRAFT]` | `new` | 宿主 AI 生成规格草案并写回 SPEC.md（补全 output/acceptance 三态） |
 | `[TASKQ_PIPELINE]` / `[TASKQ_PIPELINE_END]` | `pipeline` | 流水线剧本块，宿主 AI 按剧本编排多命令 |
 | `[TASKQ_ORCHESTRATE]` / `[/TASKQ_ORCHESTRATE]` | `ask`（复合意图） | 多动作词 + 时序词命中时的编排剧本（步骤/命令/拦停点/模式），宿主 AI 按序接力 |

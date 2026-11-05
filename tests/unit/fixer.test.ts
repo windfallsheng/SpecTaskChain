@@ -23,21 +23,21 @@ describe('fixer 纯函数：A 档修复项计算', () => {
     expect(extractStatedPaths('参考 research/jingping.md 的框架写分析')).toEqual([]);
   });
 
-  it('inferOutputPath：非代码类型落到镜像院落 {dir}{slug}.md；data/代码类型返回院落目录不猜文件名', () => {
+  it('inferOutputPath：非代码类型落到任务目录内 outputs/{slug}.md；data/代码类型返回院落目录不猜文件名', () => {
     const dir = join('/proj', 'queue', 'batch-002', 'task-migrate-guide');
     const spec = buildSpec('01-migrate-guide', dir, { goal: 'g', type: 'doc', output: '', acceptance: {}, draft: true }, '', 'general');
-    expect(inferOutputPath(spec, resolveTaskType('/tmp', 'doc'))).toBe('outputs/batch-002/task-migrate-guide/migrate-guide.md');
-    expect(inferOutputPath({ ...spec, type: 'data' }, resolveTaskType('/tmp', 'data'))).toBe('outputs/batch-002/task-migrate-guide/');
-    expect(inferOutputPath({ ...spec, type: 'feature' }, resolveTaskType('/tmp', 'feature'))).toBe('outputs/batch-002/task-migrate-guide/');
+    expect(inferOutputPath(spec, resolveTaskType('/tmp', 'doc'), '/proj')).toBe('queue/batch-002/task-migrate-guide/outputs/migrate-guide.md');
+    expect(inferOutputPath({ ...spec, type: 'data' }, resolveTaskType('/tmp', 'data'), '/proj')).toBe('queue/batch-002/task-migrate-guide/outputs/');
+    expect(inferOutputPath({ ...spec, type: 'feature' }, resolveTaskType('/tmp', 'feature'), '/proj')).toBe('queue/batch-002/task-migrate-guide/outputs/');
   });
 
   it('computeFixes：doc 类型空 spec → 四项（role/output/acceptance/draft）', () => {
-    const spec = buildSpec('01-migrate-guide', '/x', { goal: '写迁移手册', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '正文', 'general');
-    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'));
+    const spec = buildSpec('01-migrate-guide', join('/proj', 'queue', 'batch-001', '01-migrate-guide'), { goal: '写迁移手册', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '正文', 'general');
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'), '/proj');
     expect(items.map((i) => i.kind)).toEqual(['role', 'output', 'acceptance', 'draft']);
     expect(items.find((i) => i.kind === 'role')?.after).toBe('role: document-writer');
-    expect(items.find((i) => i.kind === 'output')?.after).toBe('output: outputs/migrate-guide.md');
-    expect(items.find((i) => i.kind === 'acceptance')?.after).toContain('path: outputs/migrate-guide.md');
+    expect(items.find((i) => i.kind === 'output')?.after).toBe('output: queue/batch-001/01-migrate-guide/outputs/migrate-guide.md');
+    expect(items.find((i) => i.kind === 'acceptance')?.after).toContain('path: queue/batch-001/01-migrate-guide/outputs/migrate-guide.md');
   });
 
   it('computeFixes：general 类型不补 role（generalist 兜底保留 AI 自动选择空间）', () => {
@@ -56,26 +56,27 @@ describe('fixer 纯函数：A 档修复项计算', () => {
   });
 
   it('computeFixes：描述里的输入引用（读 xx.csv）不误当产出路径', () => {
-    const spec = buildSpec('01-zhoubao', '/x', { goal: '读 data/sales.csv 汇总成周报', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
-    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'));
+    const dir = join('/proj', 'queue', 'batch-001', '01-zhoubao');
+    const spec = buildSpec('01-zhoubao', dir, { goal: '读 data/sales.csv 汇总成周报', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'), '/proj');
     const out = items.find((i) => i.kind === 'output');
-    expect(out?.after).toBe('output: outputs/zhoubao.md');
+    expect(out?.after).toBe('output: queue/batch-001/01-zhoubao/outputs/zhoubao.md');
   });
 
-  it('computeFixes：镜像落位 → outputs/{批次}/{任务目录}/{slug}.md（目录名与队列一致）', () => {
+  it('computeFixes：默认落位 → 任务目录内 outputs/{slug}.md（产出与任务同住）', () => {
     const dir = join('/proj', 'queue', 'batch-002', 'task-guichao');
     const spec = buildSpec('01-guichao', dir, { goal: '写一份周报', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
-    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'));
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'), '/proj');
     const out = items.find((i) => i.kind === 'output');
-    expect(out?.after).toBe('output: outputs/batch-002/task-guichao/guichao.md');
+    expect(out?.after).toBe('output: queue/batch-002/task-guichao/outputs/guichao.md');
   });
 
-  it('computeFixes：模块子任务镜像 → 模块层级也保留', () => {
+  it('computeFixes：模块子任务默认落位 → 子任务目录内 outputs/（层级保留）', () => {
     const dir = join('/proj', 'queue', 'batch-003', 'module-budget', 'yusuan-cesuan');
     const spec = buildSpec('yusuan-cesuan', dir, { goal: '写一份测算报告', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
-    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'));
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'), '/proj');
     const out = items.find((i) => i.kind === 'output');
-    expect(out?.after).toBe('output: outputs/batch-003/module-budget/yusuan-cesuan/yusuan-cesuan.md');
+    expect(out?.after).toBe('output: queue/batch-003/module-budget/yusuan-cesuan/outputs/yusuan-cesuan.md');
   });
 
   it('computeFixes：描述指定路径 → 批次覆盖与归巢都不介入（用户指定优先）', () => {
@@ -85,11 +86,11 @@ describe('fixer 纯函数：A 档修复项计算', () => {
     expect(out?.after).toBe('output: docs/jiaojie.md'); // 用户指定优先，不套目录
   });
 
-  it('computeFixes：data 类型落镜像院落目录（扩展名不可断定不猜文件名）', () => {
-    const spec = buildSpec('01-d', '/x', { goal: 'g', type: 'data', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
-    const items = computeFixes(spec, resolveTaskType('/tmp', 'data'));
+  it('computeFixes：data 类型落任务目录内 outputs/ 院落（扩展名不可断定不猜文件名）', () => {
+    const spec = buildSpec('01-d', join('/proj', 'queue', 'batch-001', '01-d'), { goal: 'g', type: 'data', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'data'), '/proj');
     expect(items.map((i) => i.kind)).toEqual(['role', 'output', 'acceptance', 'draft']);
-    expect(items.find((i) => i.kind === 'output')?.after).toBe('output: outputs/');
+    expect(items.find((i) => i.kind === 'output')?.after).toBe('output: queue/batch-001/01-d/outputs/');
   });
 
   it('computeFixes：三必填齐 + role 已指定 → 空（幂等）', () => {
@@ -131,11 +132,11 @@ describe('applyFix 行级编辑：落盘 / sources 归档 / 幂等 / 正文不�
   it('四类修复一次落盘：output 填充 / acceptance 骨架 / role 插入 / draft 摘除', () => {
     const { root, dir, specPath } = setup();
     const meta = join(root, 'queue', '.taskchain');
-    const items = computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc'));
+    const items = computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc'), root);
     const applied = applyFix(specPath, items);
     expect(applied).toHaveLength(4);
     const after = readFileSync(specPath, 'utf-8');
-    expect(after).toContain('output: outputs/batch-001/01-migrate-guide/migrate-guide.md');
+    expect(after).toContain('output: queue/batch-001/01-migrate-guide/outputs/migrate-guide.md');
     expect(after).toContain('role: document-writer');
     expect(after).toContain('review: 待人工评审');
     expect(after).not.toContain('draft: true');
@@ -150,10 +151,10 @@ describe('applyFix 行级编辑：落盘 / sources 归档 / 幂等 / 正文不�
   it('幂等：修复后再跑 → 无新改动、文件不变、sources 归档不刷新', () => {
     const { root, dir, specPath } = setup();
     const meta = join(root, 'queue', '.taskchain');
-    applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc')));
+    applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc'), root));
     const once = readFileSync(specPath, 'utf-8');
     const archiveOnce = readFileSync(join(dir, 'sources', 'SPEC.md'), 'utf-8');
-    const again = applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc')));
+    const again = applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc'), root));
     expect(again).toEqual([]);
     expect(readFileSync(specPath, 'utf-8')).toBe(once);
     expect(readFileSync(join(dir, 'sources', 'SPEC.md'), 'utf-8')).toBe(archiveOnce); // 无改动不刷新归档
@@ -162,16 +163,16 @@ describe('applyFix 行级编辑：落盘 / sources 归档 / 幂等 / 正文不�
   it('fix 留痕：frontmatter 追加 fix-log 累积日志，正文不碰，幂等不重复加', () => {
     const { root, dir, specPath } = setup();
     const meta = join(root, 'queue', '.taskchain');
-    applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc')));
+    applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc'), root));
     const after = readFileSync(specPath, 'utf-8');
     expect(after).toContain('fix-log:');
     expect(after).toContain('补 role: document-writer'); // 条目含日期与应用描述
-    expect(after).toContain('补 output: outputs/batch-001/01-migrate-guide/migrate-guide.md');
+    expect(after).toContain('补 output: queue/batch-001/01-migrate-guide/outputs/migrate-guide.md');
     expect(after).toContain('# 正文');
     expect(after).toContain('这一行一个字都不能动。'); // 正文一字不碰
     expect(after.split('\n').filter((l) => /^  - "/.test(l))).toHaveLength(1);
     // 幂等：再跑无改动 → 不追加日志
-    applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc')));
+    applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc'), root));
     expect(readFileSync(specPath, 'utf-8')).toBe(after);
   });
 
@@ -252,7 +253,7 @@ describe('fixCommand 命令路径：非交互提示 / 预览 / 授权 / 定向',
     expect(out).toContain('✅ 已修复 4 处');
     expect(out).toContain('重新体检确认：taskq clarify');
     const after = readFileSync(specPath, 'utf-8');
-    expect(after).toContain('output: outputs/batch-001/01-migrate-guide/migrate-guide.md'); // 镜像：批次/任务目录与队列一致
+    expect(after).toContain('output: queue/batch-001/01-migrate-guide/outputs/migrate-guide.md'); // 默认落位：任务目录内 outputs/
     expect(after).not.toContain('draft: true');
   });
 
@@ -329,7 +330,7 @@ describe('fixCommand 覆盖开关：批次级 / CLI 临时 / 任务级', () => {
     writeFileSync(join(root, 'queue', 'batch-001', 'config', 'BATCH.yaml'), 'overwrite: false\n', 'utf-8');
     const out = fixCommand(c, { yes: true, forceOverwrite: true });
     expect(out).toContain('✅ 已修复 4 处');
-    expect(readFileSync(specPath, 'utf-8')).toContain('output: outputs/batch-001/01-migrate-guide/migrate-guide.md');
+    expect(readFileSync(specPath, 'utf-8')).toContain('output: queue/batch-001/01-migrate-guide/outputs/migrate-guide.md');
   });
 
   it('任务级 SPEC.md overwrite: false → 处方跳过不落盘（--yes 也拦）', () => {
@@ -337,7 +338,7 @@ describe('fixCommand 覆盖开关：批次级 / CLI 临时 / 任务级', () => {
     writeFileSync(join(dir, 'SPEC.md'), `---\ntype: doc\noverwrite: false\ngoal: 写迁移手册\noutput:\nacceptance:\n  artifacts: []\n  checks: []\n  review: ''\ndraft: true\n---\n正文。\n`, 'utf-8');
     const out = fixCommand(c, { yes: true });
     expect(out).toContain('overwrite: false');
-    expect(readFileSync(join(dir, 'SPEC.md'), 'utf-8')).not.toContain('outputs/batch-001/01-migrate-guide/migrate-guide.md'); // 未被覆盖
+    expect(readFileSync(join(dir, 'SPEC.md'), 'utf-8')).not.toContain('queue/batch-001/01-migrate-guide/outputs/migrate-guide.md'); // 未被覆盖
   });
 
   it('默认（无配置）：--yes 覆盖落盘 + sources/ 归档原文件', () => {
@@ -362,7 +363,7 @@ describe('fixCommand 覆盖开关：批次级 / CLI 临时 / 任务级', () => {
     // batch-001 默认开：定向修 batch-001 的任务照常覆盖
     const out1 = fixCommand(c, { yes: true, taskId: '01-migrate-guide' });
     expect(out1).toContain('✅ 已修复 4 处');
-    expect(readFileSync(specPath, 'utf-8')).toContain('output: outputs/batch-001/01-migrate-guide/migrate-guide.md');
+    expect(readFileSync(specPath, 'utf-8')).toContain('output: queue/batch-001/01-migrate-guide/outputs/migrate-guide.md');
   });
 
   it('全队修混合批次：各任务按各自批次判定（开的修、关的拦）', () => {
@@ -375,7 +376,7 @@ describe('fixCommand 覆盖开关：批次级 / CLI 临时 / 任务级', () => {
     const out = fixCommand(c, { yes: true });
     expect(out).toContain('✅ 已修复 4 处');
     expect(out).toContain('02-guide'); // 被拦任务点名
-    expect(readFileSync(specPath, 'utf-8')).toContain('output: outputs/batch-001/01-migrate-guide/migrate-guide.md');
+    expect(readFileSync(specPath, 'utf-8')).toContain('output: queue/batch-001/01-migrate-guide/outputs/migrate-guide.md');
     expect(readFileSync(join(d2, 'SPEC.md'), 'utf-8')).toBe(DRAFT_SPEC); // 未被覆盖
   });
 });

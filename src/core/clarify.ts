@@ -8,6 +8,7 @@ import { extractReferences } from './references';
 import { isPlaceholderSlug, hasNonAscii, slugFromDir } from './task-naming';
 import { resolveTaskRole, listBuiltinRoles, resolveEffectiveRole } from './task-role';
 import { builtinTemplatePlaceholders } from './task-template';
+import { DARK_CSS, SCAN_CSS, SCAN_LAYERS } from './html-theme';
 import { resolveTaskType } from './task-type';
 import { extractStatedPaths, defaultOutputFor } from './output-location';
 
@@ -185,8 +186,8 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string, knownArti
     }
   } else if (!outRaw) {
     const typeDef = resolveTaskType(findMetaDir(spec.dir), spec.type);
-    const def = defaultOutputFor(spec, typeDef);
-    issues.push({ level: 'suggest', taskId: spec.id, message: `产出物位置未指明——默认落位 ${def}（镜像队列层级 outputs/{批次}/{任务目录}/；任务描述中已指定的以指定为准）` });
+    const def = defaultOutputFor(spec, typeDef, projectRoot);
+    issues.push({ level: 'suggest', taskId: spec.id, message: `产出物位置未指明——默认落位 ${def}（任务目录内 outputs/ 院落；任务描述中已指定或改过 output 的按指定为准）` });
   }
   // 验收只有软门禁：无人值守没有机器可查的地基
   if (spec.acceptance && !spec.acceptance.artifacts.length && !spec.acceptance.checks.length && spec.acceptance.review.trim()) {
@@ -511,44 +512,33 @@ export function renderClarifyHtml(issues: ClarifyIssue[]): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SpecTaskChain 体检报告</title>
 <style>
-body{font-family:'PingFang SC','Hiragino Sans GB',sans-serif;margin:40px auto;max-width:820px;padding:0 20px;color:#1e293b;background:#f8fafc;line-height:1.7}
-h1{font-size:26px;margin-bottom:4px}
-.sub{color:#64748b;font-size:13px;margin-bottom:22px}
+${DARK_CSS}${SCAN_CSS}
+body{margin:40px auto;max-width:860px;padding:0 20px;position:relative;z-index:1}
 .stats{display:flex;gap:14px;margin-bottom:22px;flex-wrap:wrap}
-.stat{background:#fff;border-radius:10px;padding:10px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:14px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 18px;font-size:14px}
 .stat b{font-size:18px;margin-right:4px}
-.group{background:#fff;border-left:4px solid;border-radius:10px;padding:8px 18px;margin:12px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.group h3{font-size:15px;margin:10px 0;color:#334155;display:flex;align-items:center;gap:8px}
-.badge{color:#fff;font-size:12px;border-radius:9px;padding:1px 8px;font-weight:700}
-.item{padding:7px 0;border-top:1px solid #f1f5f9}
-.item:first-of-type{border-top:none}
-.item b{font-size:13px;color:#1d4ed8}
-.item p{margin:3px 0 0;font-size:13.5px}
-.opt{display:flex;gap:8px;align-items:flex-start;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;margin:6px 0 0;font-size:13px}
-.opt b{font-size:13px;color:#4338ca;white-space:nowrap}
-.opt .how{color:#475569;flex:1}
+.group{background:var(--card);border:1px solid var(--border);border-left:4px solid;border-radius:12px;padding:8px 18px;margin:12px 0}
+.group h3{font-size:15px;margin:10px 0;color:var(--text);display:flex;align-items:center;gap:8px}
+.badge{color:#0b1929;font-size:12px;border-radius:9px;padding:1px 8px;font-weight:700}
 .who{font-size:11px;border-radius:6px;padding:1px 6px;font-weight:700;white-space:nowrap}
-.who.ai{background:#e0e7ff;color:#4338ca}
-.who.human{background:#fef3c7;color:#b45309}
-.who.both{background:#ecfdf5;color:#047857}
-.opt.rec{background:#eef2ff;border-color:#c7d2fe}
-.rec-tag{font-size:11px;background:#4f46e5;color:#fff;border-radius:6px;padding:1px 6px;font-weight:700;white-space:nowrap}
-.score{font-size:11px;background:#f1f5f9;color:#475569;border-radius:6px;padding:1px 6px;font-weight:700;white-space:nowrap}
-.opt .why{display:block;color:#6d28d9;font-size:12px;margin-top:2px}
-.clean{background:#fff;border-radius:10px;padding:40px 20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.clean .big{font-size:44px}
-.clean p{color:#64748b;font-size:14px;margin:8px 0 0}
-.tip{color:#64748b;font-size:13px;margin-top:18px;border-top:1px solid #e2e8f0;padding-top:12px}
+.who.ai{background:rgba(99,102,241,.18);color:#a5b4fc}
+.who.human{background:rgba(249,115,22,.16);color:#fdba74}
+.who.both{background:rgba(20,184,166,.16);color:#5eead4}
+.opt.rec{background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.4)}
+.rec-tag{font-size:11px;background:#6366f1;color:#0b1929;border-radius:6px;padding:1px 6px;font-weight:700;white-space:nowrap}
+.score{font-size:11px;background:rgba(14,165,233,.12);color:var(--cyan);border-radius:6px;padding:1px 6px;font-weight:700;white-space:nowrap}
+.opt .why{display:block;color:#c4b5fd;font-size:12px;margin-top:2px}
 </style>
 </head>
 <body>
+${SCAN_LAYERS}
 <h1>🩺 澄清体检报告</h1>
 <div class="sub">生成于 ${new Date().toLocaleString('zh-CN')} · 随叫随到的体检，处理权在你</div>
 <div class="stats">
-  <div class="stat"><b style="color:#ef4444">${blocking.length}</b>⛔ 阻塞</div>
-  <div class="stat"><b style="color:#f59e0b">${suggest.length}</b>⚠️ 建议</div>
+  <div class="stat"><b style="color:#f87171">${blocking.length}</b>⛔ 阻塞</div>
+  <div class="stat"><b style="color:#fbbf24">${suggest.length}</b>⚠️ 建议</div>
   <div class="stat"><b style="color:#94a3b8">${pending.length}</b>⏳ 待定</div>
-  <div class="stat"><b style="color:#6366f1">${exec.length}</b>🤖 可执行性</div>
+  <div class="stat"><b style="color:#818cf8">${exec.length}</b>🤖 可执行性</div>
 </div>
 ${body}
 ${issues.length ? '<div class="tip">处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险从方案菜单选一条（✅ 推荐带评分与理由）：改什么 AI 就能做 / 换什么内容 AI 能做 / 人机分工（AI 做闸口内，人做闸口外）；逐项裁决：taskq clarify --task &lt;ID&gt; --decide（y 采纳 / n 换方案 / s 跳过，采纳写回 SPEC.md decisions）</div><div class="tip">澄清留痕：澄清（补正文）后，在 SPEC.md 正文尾部写「## 澄清记录」——逐条列原模糊点 / 备选方案 / 应用的方案与理由；无人值守（自动）模式必写，交互模式用户全程在场可免。CLI 机械修自带留痕：fix 写 frontmatter fix-log、--decide 写 decisions、改前归档 sources/——无需手写。</div>' : ''}

@@ -84,12 +84,12 @@ taskq ask "看下进度"                                 # 口语入口（识别
 
 taskq 不接管你的项目——它只管理 `queue/`。项目里其余目录只有两种身份：
 
-- **产出总仓**：`outputs/` ——镜像队列层级（`outputs/{批次}/{任务目录}/` 与 `queue/` 同构，照队列找同路径即见产出）；任务描述里明确指定了路径时按指定走。
+- **产出院落**：每个任务目录内 `outputs/`（`queue/{批次}/{任务目录}/outputs/`，文档类精确到 `{slug}.md`）——产出与任务同住，哪个任务的货一眼即知；任务描述里明确指定了路径或改过 output 字段时按指定走。
 - **用户自组织区**：`materials/` `specs/` `logs/` 或任何你已有的目录——taskq 不认识也不碰，名字随你定；素材类文件放这里，`taskq split materials/x.md` 指过去即可。
 
 三类目录各司其职的完整说明见 [docs/directory-layout.md](https://github.com/windfallsheng/SpecTaskChain/blob/main/docs/directory-layout.md)。
 
-> 📖 想一眼看懂这些？`taskq init` 后双击 `queue/GUIDE.html`——上手三步 + 三类目录 + 命令速查 + 常见问题都在里面（`taskq help guide --html` 随时再生成）。
+> 📖 想一眼看懂这些？`taskq init` 后双击 `queue/reports/GUIDE.html`——上手三步 + 三类目录 + 命令速查 + 常见问题都在里面（暗色科技风，与 SpecCore 报告同源；`taskq help guide --html` 随时再生成）。
 
 ## 队列结构
 
@@ -127,7 +127,7 @@ queue/
 ## 能力清单（v0.2.1）
 
 - **批次架构**：batch-NNN 多批次目录，聚焦语义（new 落最新 / run 跑最新 / --batch 点名），旧 tasks 兼容
-- **命名仪式**：任务目录语义 slug（--name 优先 → goal 全拼 → 类型键兜底），模块 module- 前缀，编号全局递增不撞账本键
+- **命名仪式**：任务目录语义 slug（--name 优先 → goal 含英文词自动提取 → 纯中文由宿主 AI 英译接力，拼音仅兜底 → 类型键兜底），模块 module- 前缀，编号全局递增不撞账本键
 - **元数据与筛选**：created-at/priority/tags/estimate + 批次/模块可选元数据 + list/report 三扇窗筛选
 - **执行角色（role）**：type 管形态、role 管专业——内置 10 专业化角色（document-writer/code-engineer/debug-engineer/data-analyst…，旧名别名兼容）+ 自定义 .taskchain/ROLES/（同名覆盖内置，applies-to 按类型/任务自动套用）；什么都没指定时 AI 按任务内容自动选角（类型建议可推翻）
 - **规格模板**：正文按模板骨架落盘——任务 TEMPLATE.md > .taskchain/TEMPLATES/{类型}.md > TEMPLATES/SPEC.md 通用 > 系统内置，用户逐层覆盖

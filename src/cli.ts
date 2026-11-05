@@ -250,7 +250,7 @@ function main(): void {
         // help [guide|<命令>] [--html]：总览 → 引导页 / 单命令详情；--html 生成 HTML 引导页
         if (hasFlag('--html')) {
           const guidePath = generateGuideHtml(cfg);
-          output = `📖 HTML 引导页已生成：${guidePath}\n\n双击打开即可看：上手三步 + 目录布局 + 命令速查 + 常见问题。`;
+          output = `📖 HTML 引导页已生成：${guidePath}\n\n双击打开即可看：上手三步 + 目录布局 + 命令速查 + 字段速览 + 常见问题。`;
         } else if (rest[0] === 'guide') output = guideText();
         else if (rest[0] && !rest[0].startsWith('-')) output = commandDetail(rest[0]);
         else output = helpText();

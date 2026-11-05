@@ -3,6 +3,7 @@
 // 设计原则：报告是辅助物，生成失败不能影响主流程（worker 静默运行，失败写 log 供排查）
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
+import { DARK_CSS, SCAN_CSS, SCAN_LAYERS } from './html-theme';
 import { spawn } from 'child_process';
 import type { TaskSpec } from './task-spec';
 import type { TaskRunState } from './config';
@@ -239,30 +240,31 @@ export function renderAssessmentHtml(r: AssessmentReport): string {
 <meta charset="UTF-8">
 <title>${title}——批次 ${escHtml(r.batchId)}</title>
 <style>
-  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f8fafc; color: #1e293b; }
-  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+${DARK_CSS}${SCAN_CSS}
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; position: relative; z-index: 1; }
   .head { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
-  .grade { width: 72px; height: 72px; border-radius: 16px; background: ${gradeColor(r.grade)}; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; line-height: 1; flex-shrink: 0; }
+  .grade { width: 72px; height: 72px; border-radius: 16px; background: ${gradeColor(r.grade)}; color: #0b1929; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; line-height: 1; flex-shrink: 0; box-shadow: 0 0 24px ${gradeColor(r.grade)}66; }
   .grade small { font-size: 11px; font-weight: 500; margin-top: 4px; }
   h1 { font-size: 24px; margin: 0 0 4px; }
-  .meta { color: #64748b; font-size: 13px; }
-  .headline { background: #fff; border-left: 4px solid ${gradeColor(r.grade)}; padding: 14px 18px; border-radius: 8px; font-size: 15px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .meta { color: var(--muted); font-size: 13px; }
+  .headline { background: var(--card); border: 1px solid var(--border); border-left: 4px solid ${gradeColor(r.grade)}; padding: 14px 18px; border-radius: 12px; font-size: 15px; margin: 16px 0; }
   .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 24px; }
-  .stat { background: #fff; border-radius: 10px; padding: 12px 18px; min-width: 120px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
-  .s-label { display: block; font-size: 12px; color: #64748b; margin-bottom: 4px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 18px; min-width: 120px; }
+  .s-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   .s-value { font-size: 16px; font-weight: 600; }
-  h2 { font-size: 18px; margin: 28px 0 12px; }
-  .task { background: #fff; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  h2 { font-size: 17px; margin: 28px 0 12px; }
+  .task { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
   .t-head { display: flex; align-items: center; gap: 8px; }
   .t-icon { font-size: 16px; }
-  .t-name { color: #94a3b8; font-weight: 400; font-size: 13px; margin-left: 4px; }
-  .t-status { margin-left: auto; font-size: 12px; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; }
-  .t-sum { margin: 8px 0 4px; font-size: 14px; color: #334155; }
-  ul { margin: 6px 0 2px; padding-left: 20px; font-size: 13px; color: #475569; }
+  .t-name { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 4px; }
+  .t-status { margin-left: auto; font-size: 12px; padding: 2px 10px; border-radius: 999px; background: rgba(14,165,233,.1); color: var(--cyan); }
+  .t-sum { margin: 8px 0 4px; font-size: 14px; color: var(--text); }
+  ul { margin: 6px 0 2px; padding-left: 20px; font-size: 13px; color: var(--text); }
   li { margin: 3px 0; }
 </style>
 </head>
 <body>
+${SCAN_LAYERS}
 <div class="wrap">
   <div class="head">
     <div class="grade">${escHtml(r.grade)}<small>${r.score} 分</small></div>

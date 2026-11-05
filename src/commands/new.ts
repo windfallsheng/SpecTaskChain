@@ -53,11 +53,11 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   if (!opts.name && hasCJK(opts.goal) && !/[a-zA-Z0-9]/.test(opts.goal)) {
     return [
       '[TASKQ_PROMPT]',
-      `任务「${opts.goal}」缺英文目录名——请英译后带 --name 续跑：`,
+      `任务「${opts.goal}」缺英文目录名——请英译为英文 slug（kebab-case，如 weekly-report / customer-email）后带 --name 续跑：`,
       '',
       `  taskq new "${opts.goal}" --name "english-slug"`,
       '',
-      '没有合适的英文时降级传拼音（如 --name "anquanshencha"）或直接传中文名（CLI 自动转全拼）。',
+      '英文优先；拼音（如 --name "zhoubao"）只用于确实没有英文对应词的最后兜底，能英译就不要降级。',
       '[TASKQ_PROMPT_END]',
     ].join('\n');
   }
@@ -148,7 +148,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
       'utf-8'
     );
     writeLastUsedBatch(cfg, batchId); // 最近使用批次记忆：落盘即认领
-    appendOpLog(cfg, { cmd: 'new', target: subName, batch: batchId, note: `入模块 ${modName}` }); // 操作轨迹：建任务留痕
+    appendOpLog(cfg, { cmd: 'new', target: subName, batch: batchId, note: `入模块 ${modName}（名字来自模块模板）` }); // 操作轨迹：建任务留痕
     const lines = [
       `✅ 子任务已入模块「${modName}」${groupShown ? `（${groupShown}）` : ''} → 批次 ${batchId}（任务模块 = 共享 spec 的院落）`,
       '',
@@ -193,7 +193,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
     'utf-8'
   );
   writeLastUsedBatch(cfg, batchId); // 最近使用批次记忆：落盘即认领
-  appendOpLog(cfg, { cmd: 'new', target: id, batch: batchId, note: opts.goal.slice(0, 40) }); // 操作轨迹：建任务留痕
+  appendOpLog(cfg, { cmd: 'new', target: id, batch: batchId, note: `${opts.goal.slice(0, 40)}（名字${opts.name ? `外部指定 --name=${opts.name}` : `自动提取 ${slug}`}）` }); // 操作轨迹：建任务留痕（含名字来源，英译/降级/自动可审计）
   const lines = [
     `✅ 任务「${id}」${shownName ? `（${shownName}）` : ''}已入队 → 批次 ${batchId}（draft 态：等待规格补全，补全前 taskq run 会拦截）`,
     ...(id !== baseId ? [`  撞名拼短 hash 区分：${baseId} → ${id}（重名不打架，state 键各归各）`] : []),

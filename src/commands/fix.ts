@@ -71,7 +71,7 @@ export function fixCommand(cfg: TaskQConfig, opts: FixOptions): string {
       return {
         task: t,
         specPath: join(t.dir, 'SPEC.md'),
-        items: computeFixes(t, resolveTaskType(cfg.metaDir, t.type)),
+        items: computeFixes(t, resolveTaskType(cfg.metaDir, t.type), cfg.projectRoot),
       };
     })
     .filter((p) => p.items.length);

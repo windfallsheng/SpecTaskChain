@@ -87,26 +87,26 @@ describe('SPEC.md 畸形输入：不崩、不静默丢字段', () => {
     expect(out).toContain('按用户指定的来');
   });
 
-  it('产出物位置：未指明（doc 类型）→ 建议镜像落位 outputs/{批次}/{任务目录}/{slug}.md', () => {
+  it('产出物位置：未指明（doc 类型）→ 建议默认落位 任务目录内 outputs/{slug}.md', () => {
     const cfg = makeCfg();
     makeTask(cfg, '05-mo-ren', '---\ntype: doc\ngoal: 写一份说明\noutput: \nacceptance:\n  artifacts: []\n  checks: []\n  review: 待评审\n---\n正文');
     const out = clarifyCommand(cfg, { taskId: '05-mo-ren' });
-    expect(out).toContain('outputs/batch-001/05-mo-ren/mo-ren.md');
+    expect(out).toContain('queue/batch-001/05-mo-ren/outputs/mo-ren.md');
   });
 
-  it('产出物位置：未指明（feature 代码任务）→ 镜像院落目录建议（不猜扩展名）', () => {
+  it('产出物位置：未指明（feature 代码任务）→ 任务目录内 outputs/ 院落（不猜扩展名）', () => {
     const cfg = makeCfg();
     makeTask(cfg, '06-daima', '---\ntype: feature\ngoal: 优化登录接口\noutput: \nacceptance:\n  artifacts: []\n  checks: []\n  review: 待评审\n---\n正文');
     const out = clarifyCommand(cfg, { taskId: '06-daima' });
-    expect(out).toContain('outputs/batch-001/06-daima/');
+    expect(out).toContain('queue/batch-001/06-daima/outputs/');
   });
 
-  it('产出物位置：镜像建议说明层级（提示 outputs/{批次}/{任务目录}/ 口径）', () => {
+  it('产出物位置：默认落位建议说明层级（提示任务目录内 outputs/ 口径）', () => {
     const cfg = makeCfg();
     makeTask(cfg, '07-guichao', '---\ntype: doc\ngoal: 写一份说明\noutput: \nacceptance:\n  artifacts: []\n  checks: []\n  review: 待评审\n---\n正文');
     const out = clarifyCommand(cfg, { taskId: '07-guichao' });
-    expect(out).toContain('outputs/batch-001/07-guichao/guichao.md');
-    expect(out).toContain('镜像队列层级');
+    expect(out).toContain('queue/batch-001/07-guichao/outputs/guichao.md');
+    expect(out).toContain('任务目录内 outputs/');
   });
 
   it('二进制乱码 SPEC.md → 不抛异常，按无 frontmatter 处理', () => {
