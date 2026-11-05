@@ -191,8 +191,34 @@ export function applyFix(specPath: string, items: FixItem[]): string[] {
   } catch {
     // 归档失败不阻断修复（sources/ 是用户可见的存档，不是主流程）
   }
+  // 澄清留痕：写回前追加 fix-log（正文不碰）——无人值守下用户可追溯 CLI 动了什么
+  text = appendFixLog(text, applied);
   writeFileSync(specPath, text, 'utf-8');
   return applied;
+}
+
+/** 澄清留痕：fix 机械修写回前在 frontmatter 追加 fix-log 条目（累积日志，正文不碰） */
+function appendFixLog(text: string, applied: string[]): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const range = frontmatterRange(lines);
+  if (!range) return text; // 无 frontmatter 或形状异常：不留痕也不阻断主流程
+  const entry = `  - "${new Date().toISOString().slice(0, 10)}: ${applied.join('；')}"`;
+  const idx = lines.findIndex((l, i) => i >= range.start && i < range.end && /^fix-log:/.test(l));
+  if (idx < 0) {
+    // 无 fix-log：frontmatter 末尾（闭合 --- 前）插入键 + 首条
+    lines.splice(range.end, 0, 'fix-log:', entry);
+  } else {
+    // 已有 fix-log：块内追加（块边界 = 下一个顶层键）
+    let ins = range.end;
+    for (let i = idx + 1; i < range.end; i++) {
+      if (isTopKey(lines[i])) {
+        ins = i;
+        break;
+      }
+    }
+    lines.splice(ins, 0, entry);
+  }
+  return lines.join('\n');
 }
 
 // ============================================================

@@ -75,10 +75,43 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
     expect(out).not.toContain('module-module-auth');
   });
 
-  it('无 --name → 从 goal 提取语义 slug（中文全拼）', () => {
+  it('无 --name → 纯中文 goal 英译接力拦截（[TASKQ_PROMPT] + 不建目录）', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
     const out = newCommand(cfg(root), { goal: '整理会议纪要', draft: true });
-    expect(out).toContain('zhenglihuiyijiyao');
+    expect(out).toContain('[TASKQ_PROMPT]');
+    expect(out).toContain('请英译后带 --name 续跑');
+    expect(out).toContain('taskq new "整理会议纪要" --name "english-slug"');
+    // 不建任何任务目录：拦截发生在建目录之前
+    expect(existsSync(join(root, 'queue', 'batch-001'))).toBe(false);
+  });
+
+  it('英译接力续跑：带英文 --name 重跑 → 建英文目录，不重复拦截', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    const first = newCommand(cfg(root), { goal: '整理会议纪要', draft: true });
+    expect(first).toContain('[TASKQ_PROMPT]');
+    const second = newCommand(cfg(root), { goal: '整理会议纪要', name: 'meeting-notes', draft: true });
+    expect(second).toContain('task-meeting-notes');
+    expect(existsSync(join(root, 'queue', 'batch-001', 'task-meeting-notes', 'SPEC.md'))).toBe(true);
+  });
+
+  it('英译接力降级：--name 传拼音续跑 → 拼音目录', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    newCommand(cfg(root), { goal: '整理会议纪要', name: 'zhenglihuiyijiyao', draft: true });
+    expect(existsSync(join(root, 'queue', 'batch-001', 'task-zhenglihuiyijiyao', 'SPEC.md'))).toBe(true);
+  });
+
+  it('goal 含拉丁片段 → 不拦截，直接提取（写 MySQL 慢查询 → mysql）', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    const out = newCommand(cfg(root), { goal: '写 MySQL 慢查询分析脚本', draft: true });
+    expect(out).not.toContain('[TASKQ_PROMPT]');
+    expect(out).toContain('task-mysql');
+  });
+
+  it('--name 中文 → 不拦截（名字已定），目录全拼 + 显示名落盘', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
+    const out = newCommand(cfg(root), { goal: '写迁移文档', name: '迁移文档', draft: true });
+    expect(out).not.toContain('[TASKQ_PROMPT]');
+    expect(out).toContain('qianyiwendang');
   });
 
   it('goal 提不出语义 → 兜底任务类型键，不落 task 哑名', () => {
@@ -134,7 +167,7 @@ describe('new：中文名全拼目录 + frontmatter 显示名', () => {
 
   it('AI 草案指令含起名要求', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-name-'));
-    const out = newCommand(cfg(root), { goal: '写迁移文档', draft: false });
+    const out = newCommand(cfg(root), { goal: '写迁移文档', name: 'xieqianyiwendang', draft: false });
     expect(out).toContain('命名要求');
     expect(out).toContain('name:');
   });

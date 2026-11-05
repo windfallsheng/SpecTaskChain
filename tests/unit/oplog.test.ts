@@ -162,7 +162,7 @@ describe('ask 口语接入集成', () => {
 describe('写点挂载集成', () => {
   it('new 建任务落轨迹（含批次与描述）', () => {
     const { cfg } = fixture();
-    const out = newCommand(cfg, { goal: '写三篇迁移文档' });
+    const out = newCommand(cfg, { goal: '写三篇迁移文档', name: 'xiesanpianqianyiwendang' });
     expect(out).toContain('已入队');
     const entries = readOpLog(cfg);
     expect(entries).toHaveLength(1);

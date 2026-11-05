@@ -20,6 +20,7 @@ describe('CLARIFY.html：体检三档红黄灰分组', () => {
 
   it('三档分组齐全 + 对应色标', () => {
     const html = renderClarifyHtml(issues);
+    expect(html).toContain('澄清留痕'); // HTML 版与 MD 版同步留痕指引
     expect(html).toContain('<!DOCTYPE html>');
     expect(html).toContain('阻塞');
     expect(html).toContain('建议');
@@ -77,7 +78,7 @@ describe('CLARIFY.html：体检三档红黄灰分组', () => {
 
   it('clarifyCommand --html 落盘 queue/reports/CLARIFY.html', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-clarify-html-'));
-    newCommand(cfg(root), { goal: '写文档', type: 'doc', draft: true });
+    newCommand(cfg(root), { goal: '写文档', name: 'xiewendang', type: 'doc', draft: true });
     const out = clarifyCommand(cfg(root), { html: true });
     expect(out).toContain('🩺 体检报告已生成');
     expect(existsSync(join(root, 'queue', 'reports', 'CLARIFY.html'))).toBe(true);
@@ -87,7 +88,7 @@ describe('CLARIFY.html：体检三档红黄灰分组', () => {
 describe('REPORT.html：复盘状态分布与执行记录', () => {
   it('写盘 queue/reports/REPORT.html + 状态分布 + 执行记录', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-report-html-'));
-    newCommand(cfg(root), { goal: '写迁移手册', type: 'doc', draft: true });
+    newCommand(cfg(root), { goal: '写迁移手册', name: 'xieqianyishouce', type: 'doc', draft: true });
     const p = generateReportHtml(cfg(root));
     expect(p).toBe(join(root, 'queue', 'reports', 'REPORT.html'));
     const html = readFileSync(p, 'utf-8');
@@ -100,7 +101,7 @@ describe('REPORT.html：复盘状态分布与执行记录', () => {
 
   it('reportCommand --html 输出路径文案', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-report-cmd-'));
-    newCommand(cfg(root), { goal: '写文档', type: 'doc', draft: true });
+    newCommand(cfg(root), { goal: '写文档', name: 'xiewendang', type: 'doc', draft: true });
     const out = reportCommand(cfg(root), { html: true });
     expect(out).toContain('📊 HTML 执行报告已生成');
     expect(out).toContain('REPORT.html');

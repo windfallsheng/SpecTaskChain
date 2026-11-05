@@ -103,6 +103,52 @@ describe('执行角色（role）', () => {
     expect(dirA && dirB).toBeTruthy();
   });
 
+  it('buildTaskPrompt：上游依赖完成摘要——deps 注入 goal/verdict/产物清单，无依赖不注入', () => {
+    const cfg = makeCfg();
+    const dirA = makeTask(cfg, '01-upstream');
+    const dirB = makeTask(cfg, '02-downstream');
+    // 下游声明 depends-on 上游
+    writeFileSync(
+      join(dirB, 'SPEC.md'),
+      `---
+type: doc
+goal: 02-downstream 的任务
+output: docs/02-downstream.md
+depends-on:
+  - 01-upstream
+acceptance:
+  artifacts:
+    - path: docs/02-downstream.md
+---
+02-downstream 正文`,
+      'utf-8'
+    );
+    const queue = scanQueue(cfg.queueDir, cfg.metaDir);
+    const seq = buildExecutionSequence(queue);
+    const taskA = seq.find((t) => t.spec.id === '01-upstream')!;
+    const taskB = seq.find((t) => t.spec.id === '02-downstream')!;
+    expect(taskB.spec.dependsOn).toEqual(['01-upstream']);
+    // 上游产物真实存在 → 清单无警告
+    mkdirSync(join(cfg.projectRoot, 'docs'), { recursive: true });
+    writeFileSync(join(cfg.projectRoot, 'docs', '01-upstream.md'), 'x', 'utf-8');
+    const state = {
+      '01-upstream': { status: 'done' as const, attempts: 1, verdict: 'pass 迁移文档齐全', doneAt: '2026-11-05' },
+    };
+    const prompt = buildTaskPrompt(taskB, cfg.metaDir, cfg.projectRoot, { deps: [taskA], state });
+    expect(prompt).toContain('## 上游依赖完成摘要');
+    expect(prompt).toContain('### 上游：01-upstream（01-upstream 的任务）');
+    expect(prompt).toContain('pass 迁移文档齐全'); // verdict
+    expect(prompt).toContain('- docs/01-upstream.md'); // 产物清单
+    expect(prompt).not.toContain('⚠️ 文件不存在');
+    // 无依赖任务不注入该段
+    const promptA = buildTaskPrompt(taskA, cfg.metaDir, cfg.projectRoot);
+    expect(promptA).not.toContain('## 上游依赖完成摘要');
+    // 上游未完成 → 状态提示（防御性）
+    const promptHalf = buildTaskPrompt(taskB, cfg.metaDir, cfg.projectRoot, { deps: [taskA], state: { '01-upstream': { status: 'doing' as const, attempts: 1 } } });
+    expect(promptHalf).toContain('未完成的上游不该轮到下游执行');
+    expect(dirA && dirB).toBeTruthy();
+  });
+
   it('clarify：未知角色出 suggest 提示，内置角色不报', () => {
     const cfg = makeCfg();
     makeTask(cfg, '01-ghost', { role: 'ghost' });

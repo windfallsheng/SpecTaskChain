@@ -69,9 +69,10 @@ function main(): void {
           due: flag('--due'),
           role: flag('--role'),
         });
-        // 不带 --draft 时请求宿主 AI 接力生成规格草案——与 split 同协议：退出码 10
+        // 英译接力请求（[TASKQ_PROMPT]）无论 --draft 都 exit 10；否则不带 --draft 时请求宿主 AI 接力生成规格草案（与 split 同协议）
         // （goal 为空已被 newCommand 拦截，提示用法不是接力信号，不设退出码）
-        if (goal.trim() && !hasFlag('--draft')) process.exitCode = 10;
+        if (output.includes('[TASKQ_PROMPT')) process.exitCode = 10;
+        else if (goal.trim() && !hasFlag('--draft')) process.exitCode = 10;
         break;
       }
       case 'split': {

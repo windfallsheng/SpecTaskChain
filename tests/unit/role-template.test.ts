@@ -244,7 +244,7 @@ describe('规格模板（覆盖链）', () => {
 
   it('new 落盘：正文即模板骨架（doc 内置骨架入 SPEC）', () => {
     const cfg = makeCfg();
-    const out = newCommand(cfg, { goal: '写一份周报', type: 'doc', draft: true });
+    const out = newCommand(cfg, { goal: '写一份周报', name: 'xieyifenzhoubao', type: 'doc', draft: true });
     expect(out).toContain('已入队');
     const specPath = join(cfg.queueDir, 'batch-001', out.match(/(task-[a-z0-9-]+)/)![1], 'SPEC.md');
     expect(readFileSync(specPath, 'utf-8')).toContain('## 内容大纲');
@@ -255,7 +255,7 @@ describe('规格模板（覆盖链）', () => {
     const cfg = makeCfg();
     mkdirSync(join(cfg.metaDir, 'TEMPLATES'), { recursive: true });
     writeFileSync(join(cfg.metaDir, 'TEMPLATES', 'doc.md'), '## 我们的文档骨架\n\n- 客户视角章节', 'utf-8');
-    const out = newCommand(cfg, { goal: '写一份周报', type: 'doc', draft: true });
+    const out = newCommand(cfg, { goal: '写一份周报', name: 'xieyifenzhoubao', type: 'doc', draft: true });
     expect(out).toContain('正文模板：类型模板（.taskchain/TEMPLATES/doc.md）');
     const specPath = join(cfg.queueDir, 'batch-001', out.match(/(task-[a-z0-9-]+)/)![1], 'SPEC.md');
     expect(readFileSync(specPath, 'utf-8')).toContain('我们的文档骨架');
@@ -263,7 +263,7 @@ describe('规格模板（覆盖链）', () => {
 
   it('对话成规格 prompt：注入模板引导（不 --draft 时）', () => {
     const cfg = makeCfg();
-    const out = newCommand(cfg, { goal: '写一份周报', type: 'doc' });
+    const out = newCommand(cfg, { goal: '写一份周报', name: 'xieyifenzhoubao', type: 'doc' });
     expect(out).toContain('[TASKQ_SPEC_DRAFT]');
     expect(out).toContain('按已落盘的模板骨架补全');
   });

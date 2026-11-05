@@ -1,6 +1,6 @@
 // 可执行性风险检测（exec 档）：AI 能力圈边界的确定性信号检测
 import { describe, it, expect } from 'vitest';
-import { detectExecRisks, renderClarifyReport } from '../../src/core/clarify';
+import { detectExecRisks, detectTaskIssues, renderClarifyReport } from '../../src/core/clarify';
 import { TaskSpec } from '../../src/core/task-spec';
 
 function makeSpec(goal: string, body = ''): TaskSpec {
@@ -122,6 +122,9 @@ describe('detectExecRisks：AI 能力圈信号', () => {
     expect(report).toContain('API token');
     expect(report).toContain('方案菜单'); // 底部处理方式提示语
     expect(report).toContain('--decide'); // 判断题通道提示
+    expect(report).toContain('澄清留痕'); // 澄清动作可追溯：记录改了啥、选了哪个方案
+    expect(report).toContain('澄清记录'); // 正文留痕章节约定
+    expect(report).toContain('fix-log'); // CLI 机械修留痕
     // 推荐行必须排在方案区首行（置顶语义），三个方案评分递减
     const lines = report.split('\n');
     const recLine = lines.findIndex((l) => l.includes('✅ 推荐'));
@@ -130,5 +133,14 @@ describe('detectExecRisks：AI 能力圈信号', () => {
     expect(recLine).toBe(firstOpt);
     const scores = lines.filter((l) => l.includes('/10')).map((l) => Number(l.match(/(\d+)\/10/)![1]));
     expect(scores).toEqual([9, 8, 7]);
+  });
+
+  it('澄清留痕闭环：「## 澄清记录」章节为空报 suggest，有实质条目不报', () => {
+    const empty = detectTaskIssues(makeSpec('写周报', '## 任务背景\n写周报背景\n\n## 澄清记录\n'));
+    expect(empty.some((i) => i.message.includes('「## 澄清记录」章节为空'))).toBe(true);
+    const filled = detectTaskIssues(makeSpec('写周报', '## 任务背景\n写周报背景\n\n## 澄清记录\n\n1. 原模糊点：无数据来源\n   - 应用：方案 A（用 git 日志）\n'));
+    expect(filled.some((i) => i.message.includes('「## 澄清记录」章节为空'))).toBe(false);
+    const none = detectTaskIssues(makeSpec('写周报', '## 任务背景\n写周报背景\n'));
+    expect(none.some((i) => i.message.includes('「## 澄清记录」章节为空'))).toBe(false);
   });
 });

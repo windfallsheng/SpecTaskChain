@@ -141,9 +141,9 @@ describe('taskq new：任务 ID 碰撞拒绝覆盖', () => {
 
   it('同名同内容重复建 → 第二次拼 hash、第三次报错提示换名', () => {
     const cfg = makeCfg();
-    newCommand(cfg, { goal: '新任务', draft: true });
-    expect(newCommand(cfg, { goal: '新任务', draft: true })).toContain('task-xinrenwu-');
-    const third = newCommand(cfg, { goal: '新任务', draft: true });
+    newCommand(cfg, { goal: '新任务', name: 'xinrenwu', draft: true });
+    expect(newCommand(cfg, { goal: '新任务', name: 'xinrenwu', draft: true })).toContain('task-xinrenwu-');
+    const third = newCommand(cfg, { goal: '新任务', name: 'xinrenwu', draft: true });
     expect(third).toContain('❌');
     expect(third).toContain('换一个 --name');
   });
@@ -333,6 +333,10 @@ describe('版本事实源与 init 工具参数', () => {
     expect(content).toContain('[TASKQ_PROMPT]');
     expect(content).toContain('allowed-tools');
     expect(content).toContain('SKILL 版本');
+    // taskq-clarify 专属 SKILL 含澄清留痕守则（自动模式必写澄清记录）
+    const clarifySkill = readFileSync(join(root, '.agents', 'skills', 'taskq-clarify', 'SKILL.md'), 'utf-8');
+    expect(clarifySkill).toContain('澄清留痕');
+    expect(clarifySkill).toContain('澄清记录');
   });
 
   it('旧版 taskq 总入口（≤0.2.8）在 init/--update 时自动迁移清理为 taskq-ask', () => {

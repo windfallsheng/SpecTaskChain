@@ -197,6 +197,35 @@ describe('batchRelay 优先级链：CLI > 批次配置 > 系统默认', () => {
     expect(r.exitCode).toBe(10);
     expect(r.task.spec.id).toBe('01-a');
   });
+
+  it('relayNext 定向执行：上游未完成亮明依赖警告，依赖摘要跨 filter 仍注入', () => {
+    const cfg = makeCfg();
+    makeTask(cfg, '01-up');
+    makeTask(cfg, '02-down');
+    // 下游声明 depends-on 上游
+    writeFileSync(
+      join(cfg.queueDir, 'batch-001', '02-down', 'SPEC.md'),
+      `---
+type: doc
+goal: 02-down 的任务
+output: docs/02-down.md
+depends-on:
+  - 01-up
+acceptance:
+  artifacts:
+    - path: docs/02-down.md
+---
+写 02-down 的文档`,
+      'utf-8'
+    );
+    const r = relayNext(cfg, { task: '02-down' });
+    expect(r.exitCode).toBe(10);
+    expect(r.task.spec.id).toBe('02-down');
+    expect(r.summary).toContain('依赖未完成仍定向执行');
+    expect(r.summary).toContain('01-up');
+    expect(r.prompt).toContain('## 上游依赖完成摘要'); // 摘要跨 filter 仍注入
+    expect(r.prompt).toContain('未完成的上游不该轮到下游执行'); // 上游 todo → 防御提示
+  });
 });
 
 describe('done 验收上限：max-attempts 配置生效', () => {

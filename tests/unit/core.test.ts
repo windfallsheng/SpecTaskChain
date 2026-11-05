@@ -259,10 +259,18 @@ describe('ask：素材提取与退出码传播（防 \\s 转义回归，素材�
     expect(r.exitCode).toBe(0);
     expect(r.output).toContain('用法');
   });
-  it('「建个任务：写三篇文档」→ new 提取 goal（任务 slug 不含「任务：」前缀残渣）', () => {
+  it('「建个任务：写三篇文档」→ new 提取 goal 干净（英译接力 PROMPT 中无「任务：」前缀残渣）', () => {
     const r = askCommand(askCfg(), '建个任务：写三篇文档');
+    expect(r.exitCode).toBe(10); // 英译接力请求传播退出码
+    expect(r.output).toContain('[TASKQ_PROMPT]');
+    expect(r.output).toContain('任务「写三篇文档」缺英文目录名'); // goal 干净提取才接得上英译
+    expect(r.output).not.toContain('任务：');
+  });
+
+  it('「建个叫周报的任务」→ taskName 提取带 name → 不拦截（名字已定）', () => {
+    const r = askCommand(askCfg(), '建个叫周报的任务');
     expect(r.exitCode).toBe(0);
-    expect(r.output).toContain('xiesanpianwendang'); // goal 干净提取才 slug 对
+    expect(r.output).not.toContain('[TASKQ_PROMPT]');
   });
   it('未识别兜底 → exitCode 0 且提示可用命令', () => {
     const r = askCommand(askCfg(), '今天天气怎么样');

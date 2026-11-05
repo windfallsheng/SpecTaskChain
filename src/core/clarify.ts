@@ -205,6 +205,15 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyI
       issues.push({ level: 'suggest', taskId: spec.id, message: `正文残留模板占位符「${placeholder}」——骨架未填实；建议替换为实质内容` });
     }
   }
+  // —— 澄清留痕闭环：「## 澄清记录」章节骨架在但无实质条目 → 留痕没写完 ——
+  const logMatch = spec.body.match(/##\s*澄清记录\s*\n([\s\S]*?)(?=\n##\s|\n*$)/);
+  if (logMatch) {
+    const section = logMatch[1];
+    const hasItems = /^\s*([-*]|\d+[.、])\s+/m.test(section) || section.trim().length > 20;
+    if (!hasItems) {
+      issues.push({ level: 'suggest', taskId: spec.id, message: '「## 澄清记录」章节为空——补条目：原模糊点 / 备选方案 / 应用的方案与理由' });
+    }
+  }
   // —— 语义信号 ——
   const text = `${spec.goal}\n${spec.body}`;
   for (const w of VAGUE_WORDS) {
@@ -398,6 +407,8 @@ export function renderClarifyReport(issues: ClarifyIssue[]): string {
   section('待定', pending, '⏳');
   section('可执行性风险', exec, '🤖');
   lines.push('处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险从方案菜单选一条（✅ 推荐带评分与理由）：改什么 AI 就能做 / 换什么内容 AI 能做 / 人机分工（AI 做闸口内，人做闸口外）；逐项裁决：taskq clarify --task <ID> --decide（y 采纳 / n 换方案 / s 跳过，采纳写回 SPEC.md decisions）');
+  // 澄清留痕（可追溯）：澄清动作不该是黑箱——记录改了什么、备选了什么、选了哪个
+  lines.push('', '澄清留痕：', '  · 澄清（补正文）后，在 SPEC.md 正文尾部写「## 澄清记录」——逐条列原模糊点 / 备选方案 / 应用的方案与理由；无人值守（自动）模式必写，交互模式用户全程在场可免。', '  · CLI 机械修自带留痕：fix 写 frontmatter fix-log、--decide 写 decisions、改前归档 sources/——无需手写。');
   return lines.join('\n');
 }
 
@@ -480,7 +491,7 @@ h1{font-size:26px;margin-bottom:4px}
   <div class="stat"><b style="color:#6366f1">${exec.length}</b>🤖 可执行性</div>
 </div>
 ${body}
-${issues.length ? '<div class="tip">处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险从方案菜单选一条（✅ 推荐带评分与理由）：改什么 AI 就能做 / 换什么内容 AI 能做 / 人机分工（AI 做闸口内，人做闸口外）；逐项裁决：taskq clarify --task &lt;ID&gt; --decide（y 采纳 / n 换方案 / s 跳过，采纳写回 SPEC.md decisions）</div>' : ''}
+${issues.length ? '<div class="tip">处理方式：补（改规格） / 给默认值（不吭声按默认走） / 标记 draft（执行前再补） / 无视（自己的队列自己负责）；可执行性风险从方案菜单选一条（✅ 推荐带评分与理由）：改什么 AI 就能做 / 换什么内容 AI 能做 / 人机分工（AI 做闸口内，人做闸口外）；逐项裁决：taskq clarify --task &lt;ID&gt; --decide（y 采纳 / n 换方案 / s 跳过，采纳写回 SPEC.md decisions）</div><div class="tip">澄清留痕：澄清（补正文）后，在 SPEC.md 正文尾部写「## 澄清记录」——逐条列原模糊点 / 备选方案 / 应用的方案与理由；无人值守（自动）模式必写，交互模式用户全程在场可免。CLI 机械修自带留痕：fix 写 frontmatter fix-log、--decide 写 decisions、改前归档 sources/——无需手写。</div>' : ''}
 </body>
 </html>`;
 }

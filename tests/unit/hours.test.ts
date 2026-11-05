@@ -60,7 +60,7 @@ describe('due：口语转日期 + 逾期天数', () => {
 
   it('new --due 口语自动转日期落盘', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-hours-'));
-    newCommand(cfg(root), { goal: '写迁移文档', draft: true, due: '明天' });
+    newCommand(cfg(root), { goal: '写迁移文档', name: 'xieqianyiwendang', draft: true, due: '明天' });
     // slug 不精确断言：直接扫批次目录下的任务目录，读回 SPEC.md
     const { readdirSync } = require('fs');
     const batchDir = join(root, 'queue', 'batch-001');

@@ -77,7 +77,7 @@ describe('扫描：多批次', () => {
 describe('new：默认落最新批次 + 命名不带序号', () => {
   it('无批次时自动建 batch-001', () => {
     const cfg = makeCfg();
-    newCommand(cfg, { goal: '写文档', draft: true });
+    newCommand(cfg, { goal: '写文档', name: 'xiewendang', draft: true });
     expect(existsSync(join(cfg.queueDir, 'batch-001', 'task-xiewendang', 'SPEC.md'))).toBe(true);
   });
 
@@ -85,7 +85,7 @@ describe('new：默认落最新批次 + 命名不带序号', () => {
     const cfg = makeCfg();
     makeTask(cfg, 'batch-001', '01-a');
     makeTask(cfg, 'batch-002', '02-b');
-    const out = newCommand(cfg, { goal: '新任务', draft: true });
+    const out = newCommand(cfg, { goal: '新任务', name: 'xinrenwu', draft: true });
     expect(out).toContain('batch-002');
     expect(existsSync(join(cfg.queueDir, 'batch-002', 'task-xinrenwu', 'SPEC.md'))).toBe(true);
     expect(existsSync(join(cfg.queueDir, 'batch-001', 'task-xinrenwu'))).toBe(false);
@@ -95,7 +95,7 @@ describe('new：默认落最新批次 + 命名不带序号', () => {
     const cfg = makeCfg();
     makeTask(cfg, 'batch-001', '01-a');
     mkdirSync(join(cfg.queueDir, 'batch-002'));
-    const out = newCommand(cfg, { goal: '补老批次', batch: 'batch-001', draft: true });
+    const out = newCommand(cfg, { goal: '补老批次', name: 'bulaopici', batch: 'batch-001', draft: true });
     expect(out).toContain('batch-001');
     expect(existsSync(join(cfg.queueDir, 'batch-001', 'task-bulaopici', 'SPEC.md'))).toBe(true);
   });

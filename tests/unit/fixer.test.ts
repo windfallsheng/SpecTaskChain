@@ -111,6 +111,22 @@ describe('applyFix 行级编辑：落盘 / sources 归档 / 幂等 / 正文不�
     expect(readFileSync(join(dir, 'sources', 'SPEC.md'), 'utf-8')).toBe(archiveOnce); // 无改动不刷新归档
   });
 
+  it('fix 留痕：frontmatter 追加 fix-log 累积日志，正文不碰，幂等不重复加', () => {
+    const { root, dir, specPath } = setup();
+    const meta = join(root, 'queue', '.taskchain');
+    applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc')));
+    const after = readFileSync(specPath, 'utf-8');
+    expect(after).toContain('fix-log:');
+    expect(after).toContain('补 role: document-writer'); // 条目含日期与应用描述
+    expect(after).toContain('补 output: docs/migrate-guide.md');
+    expect(after).toContain('# 正文');
+    expect(after).toContain('这一行一个字都不能动。'); // 正文一字不碰
+    expect(after.split('\n').filter((l) => /^  - "/.test(l))).toHaveLength(1);
+    // 幂等：再跑无改动 → 不追加日志
+    applyFix(specPath, computeFixes(readSpec(dir, 'general')!, resolveTaskType(meta, 'doc')));
+    expect(readFileSync(specPath, 'utf-8')).toBe(after);
+  });
+
   it('acceptance 已有评审内容 → 骨架不重复写、原文保留', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-fixer-'));
     const dir = join(root, 'queue', 'batch-001', '01-has-review');

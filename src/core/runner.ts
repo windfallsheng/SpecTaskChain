@@ -38,8 +38,37 @@ export interface NextTaskInfo {
   summary: string;     // 状态摘要
 }
 
+/** 上游依赖完成摘要：deps 已 done 时把 goal + verdict + 产物清单注入下游 prompt（不注入全文）——下游衔接上游产出而非脑补 */
+function buildUpstreamSegment(deps: ExecutableTask[], state: Record<string, TaskRunState>, projectRoot: string): string[] {
+  const lines: string[] = [];
+  if (!deps.length) return lines;
+  lines.push('## 上游依赖完成摘要');
+  lines.push('');
+  lines.push('以下是你声明 depends-on 的上游任务。先了解它们做成了什么，衔接其产出（引用上游产物路径时 CLI 已在「引用的资料」段给出真实内容）。');
+  lines.push('');
+  for (const dep of deps) {
+    const st = state[dep.spec.id];
+    const goal = dep.spec.goal.length > 200 ? `${dep.spec.goal.slice(0, 200)}…` : dep.spec.goal;
+    lines.push(`### 上游：${dep.spec.id}（${goal}）`);
+    if (!st || st.status !== 'done') {
+      lines.push(`- 状态：${st ? st.status : '未知'}（未完成的上游不该轮到下游执行——此情况请反馈）`);
+    } else {
+      if (st.verdict) lines.push(`- 评审结论：${guardLong(st.verdict, 200, false)}`);
+      const arts = (dep.spec.acceptance?.artifacts || []).filter((a) => a.path);
+      if (arts.length) {
+        lines.push('- 产物：');
+        for (const a of arts) {
+          lines.push(`  - ${a.path}${existsSync(join(projectRoot, a.path)) ? '' : '（⚠️ 文件不存在）'}`);
+        }
+      }
+    }
+    lines.push('');
+  }
+  return lines;
+}
+
 /** 构建任务执行 prompt：规格全文 + 执行留痕 + 模块身份与公共约束 + 类型默认约束 + 引用资料 + 动作义务 + 验收标准 + 输出协议 */
-export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRoot: string): string {
+export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRoot: string, upstream?: { deps: ExecutableTask[]; state: Record<string, TaskRunState> }): string {
   const spec = exec.spec;
   const typeDef = resolveTaskType(metaDir, spec.type);
   const lines: string[] = [];
@@ -57,6 +86,10 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
       lines.push(guardLong(progress, MAX_PROGRESS_CHARS, true));
       lines.push('');
     }
+  }
+  // —— 上游依赖完成摘要（deps 声明了依赖才出现：goal + verdict + 产物清单，不注入全文）——
+  if (upstream?.deps.length) {
+    lines.push(...buildUpstreamSegment(upstream.deps, upstream.state, projectRoot));
   }
   // —— 任务规格 ——
   lines.push('## 任务规格（SPEC.md 全文，用户自由表达，请完整理解）');
@@ -190,6 +223,8 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
   }
   // 定向执行：--task 单任务 / --module 模块全部子任务（无匹配时明确报错，不悄悄跑全量）
   let sequence = buildExecutionSequence(view);
+  // 全量 ID 映射：定向执行（--task/--module）filter 后会丢上游——依赖摘要与就绪检查要跨 filter 找上游
+  const fullById = new Map(sequence.map((e) => [e.spec.id, e]));
   if (opts.task || opts.module) {
     sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module });
     if (sequence.length === 0) {
@@ -246,7 +281,19 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
       summary: `⏸ 任务「${next.spec.id}」规格标记为 draft（未澄清），建议先 \`taskq clarify --task ${next.spec.id}\` 补全；或 \`taskq run --skip-draft\` 强跑（也可在批次 config/BATCH.yaml 设 skip-draft: true 对本批长期生效）`,
     };
   }
-  const prompt = buildTaskPrompt(next, cfg.metaDir, cfg.projectRoot);
+  const deps = next.spec.dependsOn.map((d) => fullById.get(d)).filter((d): d is ExecutableTask => !!d);
+  const prompt = buildTaskPrompt(next, cfg.metaDir, cfg.projectRoot, deps.length ? { deps, state } : undefined);
+  // 定向执行（--task/--module）可能绕过依赖顺序：上游未完成时亮明警告（不拦截——定向是明确意图，自己的队列自己负责）
+  let depWarn = '';
+  if (opts.task || opts.module) {
+    const pendingDeps = deps.filter((d) => {
+      const st = state[d.spec.id];
+      return !st || st.status !== 'done';
+    });
+    if (pendingDeps.length) {
+      depWarn = `\n⚠️ 依赖未完成仍定向执行：${pendingDeps.map((d) => d.spec.id).join('、')}——上游没做完就做下游，产出可能对不上；不指定 --task/--module 的全量接力会按依赖顺序自动排`;
+    }
+  }
   // 领取即记最近使用批次：无参 run 下次自然回到这批（接力不跳批）
   if (focusBatch) writeLastUsedBatch(cfg, focusBatch);
   // 占位 doing：防并发重复领取，status 面板与报告有真数据（doingAt 超时后自动重拾）
@@ -256,7 +303,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
     task: next,
     prompt,
     exitCode: 10,
-    summary: `▶ 接力推进：下个任务「${next.spec.id}」（第 ${st.attempts + 1} 次尝试）`,
+    summary: `▶ 接力推进：下个任务「${next.spec.id}」（第 ${st.attempts + 1} 次尝试）${depWarn}`,
   };
 }
 
@@ -373,6 +420,8 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
   // 领取即记最近使用批次：无参 execute 下次自然回到这批
   if (focusBatch) writeLastUsedBatch(cfg, focusBatch);
   let sequence = buildExecutionSequence(view);
+  // 全量 ID 映射：定向执行（--task/--module）filter 后会丢上游——依赖摘要与就绪检查要跨 filter 找上游
+  const fullById = new Map(sequence.map((e) => [e.spec.id, e]));
   if (opts.task || opts.module) {
     sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module });
     if (sequence.length === 0) {
@@ -423,7 +472,10 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
     return { tasks: [], prompts: [], exitCode: 0, summary: `✅ 队列已清空：${sequence.length} 个任务全部完成${doneReportNotice(cfg, sequence, state, queue.batches, opts.batch, { noReport: opts.noReport, forceReport: opts.forceReport })}` };
   }
 
-  const prompts = taken.map((t) => buildTaskPrompt(t, cfg.metaDir, cfg.projectRoot));
+  const prompts = taken.map((t) => {
+    const deps = t.spec.dependsOn.map((d) => fullById.get(d)).filter((d): d is ExecutableTask => !!d);
+    return buildTaskPrompt(t, cfg.metaDir, cfg.projectRoot, deps.length ? { deps, state } : undefined);
+  });
   // 批内全部占位 doing：串行执行整批，done 逐个销账（中断 24 小时后自动重拾）
   taken.forEach((t) => markTaskState(cfg, t.spec.id, 'doing'));
   const ids = taken.map((t) => t.spec.id).join('、');

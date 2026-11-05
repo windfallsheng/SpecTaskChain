@@ -134,7 +134,7 @@ describe('applyDecision：决策留痕写回', () => {
 describe('clarify --decide 判断题通道（非 TTY）', () => {
   it('非交互终端只提示不等待：给出报告 + 提示回终端裁决', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-decide-'));
-    newCommand(cfg(root), { goal: '发布版本并扫码登录后台确认', type: 'general', draft: true });
+    newCommand(cfg(root), { goal: '发布版本并扫码登录后台确认', name: 'fabubanbenbingsaomadengl', type: 'general', draft: true });
     const out = clarifyCommand(cfg(root), { decide: true });
     expect(out).toContain('判断题通道需要交互终端');
     expect(out).toContain('--decide');
@@ -143,14 +143,14 @@ describe('clarify --decide 判断题通道（非 TTY）', () => {
 
   it('无 exec 风险时直接回「没有待裁决」', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-decide-clean-'));
-    newCommand(cfg(root), { goal: '写三篇迁移文档', type: 'doc', draft: true });
+    newCommand(cfg(root), { goal: '写三篇迁移文档', name: 'xiesanpianqianyiwendang', type: 'doc', draft: true });
     const out = clarifyCommand(cfg(root), { decide: true });
     expect(out).toContain('没有待裁决的可执行性风险');
   });
 
   it('采纳写回后，下次体检跳过已决信号（端到端）', () => {
     const root = mkdtempSync(join(tmpdir(), 'stc-decide-e2e-'));
-    newCommand(cfg(root), { goal: '发布版本并扫码登录后台确认', type: 'general', draft: true });
+    newCommand(cfg(root), { goal: '发布版本并扫码登录后台确认', name: 'fabubanbenbingsaomadengl', type: 'general', draft: true });
     const specs = findSpecs(join(root, 'queue'));
     expect(specs.length).toBe(1);
     expect(applyDecision(specs[0], '认证凭据→补测试凭据')).toBe(true);

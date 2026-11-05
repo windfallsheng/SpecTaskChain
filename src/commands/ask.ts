@@ -117,15 +117,16 @@ export function askCommand(cfg: TaskQConfig, input: string): AskResult {
       }
       const settled = settleBatch(cfg, result.params.batchRef);
       if (settled.blocked) return { output: settled.blocked, exitCode: 0 };
+      const output = newCommand(cfg, {
+        goal: goal.slice(0, 60),
+        draft: false,
+        name: result.params.taskName,
+        group: result.params.group,
+        batch: settled.id,
+      });
       return {
-        output: newCommand(cfg, {
-          goal: goal.slice(0, 60),
-          draft: false,
-          name: result.params.taskName,
-          group: result.params.group,
-          batch: settled.id,
-        }),
-        exitCode: 0,
+        output,
+        exitCode: output.includes('[TASKQ_PROMPT') ? 10 : 0, // 英译接力请求传播退出码
       };
     }
     case 'done':

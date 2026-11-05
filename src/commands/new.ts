@@ -45,6 +45,21 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
   if (!opts.goal || !opts.goal.trim()) {
     return '用法：taskq new <任务描述> [--group 模块名] [--batch 批次] [--priority 高|中|低] [--due 今天|明天|YYYY-MM-DD]\n\n示例：\n  taskq new "写三篇迁移文档，产出到 docs/"\n  taskq new "整理会议纪要" --group module-weekly-report --due 明天\n\n任务描述是必填——先想清楚要做什么，再入队。';
   }
+  // 命名仪式第二步（英译接力）：--name 未指定且 goal 是纯中文 → 先要英文 slug。
+  // CLI 不直连 LLM（确定性红线）：输出 [TASKQ_PROMPT] 接力，宿主 AI 英译后带 --name 续跑；
+  // 拿不出英文可降级 --name 传拼音或中文（中文自动转全拼）。--name 一旦存在即名字已定，不再打断（幂等）。
+  // 拦在 scanQueue 之前：零痕迹（不建目录、不写批次配置），宿主 AI 续跑前队列不动。
+  if (!opts.name && hasCJK(opts.goal) && !/[a-zA-Z0-9]/.test(opts.goal)) {
+    return [
+      '[TASKQ_PROMPT]',
+      `任务「${opts.goal}」缺英文目录名——请英译后带 --name 续跑：`,
+      '',
+      `  taskq new "${opts.goal}" --name "english-slug"`,
+      '',
+      '没有合适的英文时降级传拼音（如 --name "anquanshencha"）或直接传中文名（CLI 自动转全拼）。',
+      '[TASKQ_PROMPT_END]',
+    ].join('\n');
+  }
   // 批次定位：--batch 指定；缺省 = 最新批次（新任务落最新批次，插队先跑）；
   // 旧式 tasks 是只读兼容容器（第 0 批），不在默认落点内——新任务一律进 batch-NNN，无则建 batch-001
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
