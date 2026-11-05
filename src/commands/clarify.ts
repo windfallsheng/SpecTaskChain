@@ -3,27 +3,34 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { TaskQConfig } from '../core/config';
-import { scanQueue, latestBatchId } from '../core/queue';
+import { scanQueue, latestBatchId, QueueScan } from '../core/queue';
 import { readSpec, parseFrontmatter, buildSpec } from '../core/task-spec';
 import { resolveTaskType } from '../core/task-type';
-import { readBatchConfig } from '../core/batch-config';
+import { readBatchConfig, locateBatchConfig, type BatchConfig } from '../core/batch-config';
+import type { OutputLocOptions } from '../core/output-location';
 import { buildClarifyAssessment, dispatchAssessment, assessmentNotice, resolveReportSwitch } from '../core/assessment';
 import { computeFixes } from '../core/fixer';
 import { readLineSync } from './fix';
 import {
   detectTaskIssues,
   detectChainIssues,
+  detectImplicitDeps,
   renderClarifyReport,
   renderClarifyHtml,
   taskIdFromPath,
   ClarifyIssue,
 } from '../core/clarify';
 
+/** 批次配置 → 默认落位选项（产出目录覆盖 + 归巢开关；各任务按所属批次定位，互不牵连） */
+function locOpts(b: BatchConfig): OutputLocOptions {
+  return { batchDirs: b['output-dirs'], nest: b['nest-outputs'] };
+}
+
 export interface ClarifyOptions {
   taskId?: string;  // 单任务（按 ID）
   file?: string;    // 直接指文件（手动写场景：宿主 AI 消解「上面的内容」后传入）
   chain?: boolean;  // 建链前查：只查链级硬伤（依赖悬空/产出冲突/模块约束/命名重复/循环依赖），不逐任务三必填
-  html?: boolean;   // 体检报告 HTML 化（queue/reports/CLARIFY.html，三档红黄灰分组）
+  html?: boolean;   // 体检报告 HTML 化（queue/reports/CLARIFY.html，四档红黄灰靛分组）
   noReport?: boolean;   // 报告开关（临时）：当次不生成评估报告
   forceReport?: boolean; // 报告开关（临时）：当次强制生成（覆盖批次配置 reports: false）
   decide?: boolean;     // 判断题通道：exec 档逐项裁决（y 采纳 / n 换方案 / s 跳过），采纳写回 SPEC.md decisions 留痕
@@ -65,6 +72,14 @@ export function applyDecision(specPath: string, decision: string): boolean {
   return true;
 }
 
+/** 收集全队列声明将产出的文件路径（下游引用上游产物 → 体检不误报悬空） */
+function collectArtifacts(queue: QueueScan): Set<string> {
+  const arts = new Set<string>();
+  for (const t of queue.tasks) for (const a of t.acceptance?.artifacts || []) if (a.path) arts.add(a.path);
+  for (const m of queue.modules) for (const sub of m.subtasks) for (const a of sub.acceptance?.artifacts || []) if (a.path) arts.add(a.path);
+  return arts;
+}
+
 export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   let issues: ClarifyIssue[] = [];
@@ -81,7 +96,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     const { data, body } = parseFrontmatter(content);
     const id = taskIdFromPath(resolved) || '此文件';
     const spec = buildSpec(id, resolved, data, body, 'general');
-    issues = detectTaskIssues(spec, cfg.projectRoot);
+    issues = detectTaskIssues(spec, cfg.projectRoot, undefined, locOpts(locateBatchConfig(dirname(resolved), cfg.queueDir)));
   } else if (opts.taskId) {
     // 单任务体检（写完即查 / 翻车后查）
     const all = [...queue.tasks, ...queue.modules.flatMap((m) => m.subtasks)];
@@ -89,9 +104,9 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     if (!found) {
       return `❌ 未找到任务「${opts.taskId}」。可用：taskq list 查看队列清单。`;
     }
-    issues = detectTaskIssues(found, cfg.projectRoot);
+    issues = detectTaskIssues(found, cfg.projectRoot, collectArtifacts(queue), locOpts(locateBatchConfig(found.dir, cfg.queueDir)));
     // 单任务体检后顺手亮修复提示（A 档机械修）
-    const fixable = computeFixes(found, resolveTaskType(cfg.metaDir, found.type)).length;
+    const fixable = computeFixes(found, resolveTaskType(cfg.metaDir, found.type), locOpts(locateBatchConfig(found.dir, cfg.queueDir))).length;
     fixHint = fixable ? `🔧 可自动修复 ${fixable} 处：taskq fix --task ${found.id}（--yes 应用 / --dry-run 预览）` : '';
   } else if (opts.chain) {
     // 建链前查：只查链级硬伤（建链前逐任务可能还没写完，不报三必填）
@@ -101,10 +116,11 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     if (!queue.tasks.length && !queue.modules.length) {
       return '队列还是空的。先建任务：taskq new "任务描述"';
     }
-    issues = [...detectChainIssues(queue)];
-    for (const t of queue.tasks) issues.push(...detectTaskIssues(t, cfg.projectRoot));
+    issues = [...detectChainIssues(queue), ...detectImplicitDeps(queue)];
+    const knownArtifacts = collectArtifacts(queue);
+    for (const t of queue.tasks) issues.push(...detectTaskIssues(t, cfg.projectRoot, knownArtifacts, locOpts(locateBatchConfig(t.dir, cfg.queueDir))));
     for (const m of queue.modules) {
-      for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot));
+      for (const s of m.subtasks) issues.push(...detectTaskIssues(s, cfg.projectRoot, knownArtifacts, locOpts(locateBatchConfig(s.dir, cfg.queueDir))));
     }
     // 全量体检 → 澄清评估报告后台生成（不阻断终端输出）：每任务评估 + 总体评级，MD+HTML 落批次 overview/reports/
     // 报告开关四级链：CLI 临时（--no-report/--report）> 任务级（SPEC.md reports: false 筛掉）> 批次级（config/BATCH.yaml reports）> 系统默认（生成）
@@ -123,7 +139,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
       clarifyNotice = assessmentNotice(cfg.queueDir, report);
     }
     // 全量体检后亮修复提示（A 档机械修）
-    const fixable = allTasks.reduce((n, t) => n + computeFixes(t, resolveTaskType(cfg.metaDir, t.type)).length, 0);
+    const fixable = allTasks.reduce((n, t) => n + computeFixes(t, resolveTaskType(cfg.metaDir, t.type), locOpts(locateBatchConfig(t.dir, cfg.queueDir))).length, 0);
     fixHint = fixable ? `🔧 可自动修复 ${fixable} 处：taskq fix（--yes 应用 / --dry-run 预览）` : '';
   }
 
@@ -198,7 +214,7 @@ export function clarifyCommand(cfg: TaskQConfig, opts: ClarifyOptions): string {
     return parts.join('\n\n');
   }
 
-  // --html：体检报告可视化（三档红黄灰分组卡片）；终端文本照旧可读
+  // --html：体检报告可视化（四档红黄灰靛分组卡片）；终端文本照旧可读
   if (opts.html) {
     const htmlPath = join(cfg.queueDir, 'reports', 'CLARIFY.html');
     mkdirSync(dirname(htmlPath), { recursive: true });

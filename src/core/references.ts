@@ -45,7 +45,8 @@ export function extractReferences(text: string): Reference[] {
     add('url', m[0], m[0]);
   }
   // 裸路径（未被链接捕获的文档/图片路径；负向后行排除冒号与斜杠，避免把 URL 片段误判为文件）
-  const bareRe = /(?<![\w"'`:\/])([A-Za-z0-9._/-]+\.(?:md|txt|json|ya?ml|ts|js|py|csv|xml|png|jpe?g|gif|svg|webp|pdf|docx?))/g;
+  // 反引号是路径包裹符不作排除——「`data/x.csv`」提取完整路径而非 basename（截断会导致引用消解读错文件）
+  const bareRe = /(?<![\w":\/])([A-Za-z0-9._/-]+\.(?:md|txt|json|ya?ml|ts|js|py|csv|xml|png|jpe?g|gif|svg|webp|pdf|docx?|xlsx?))/g;
   while ((m = bareRe.exec(text))) {
     if (seen.has(m[1])) continue;
     add(IMAGE_EXTS.includes(extOf(m[1])) ? 'image' : 'file', m[1], m[1]);

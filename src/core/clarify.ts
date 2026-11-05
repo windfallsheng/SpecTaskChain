@@ -8,6 +8,8 @@ import { extractReferences } from './references';
 import { isPlaceholderSlug, hasNonAscii, slugFromDir } from './task-naming';
 import { resolveTaskRole, listBuiltinRoles, resolveEffectiveRole } from './task-role';
 import { builtinTemplatePlaceholders } from './task-template';
+import { resolveTaskType } from './task-type';
+import { extractStatedPaths, defaultOutputFor, type OutputLocOptions } from './output-location';
 
 /** 内置模板占位符行集合（骨架未填实检测的单一事实来源，模块加载时取一次） */
 const BUILTIN_PLACEHOLDERS = builtinTemplatePlaceholders();
@@ -40,10 +42,10 @@ export interface ExecOption {
 }
 
 /** 高危模糊词：不可验收的表达 */
-const VAGUE_WORDS = ['做好', '做好点', '完善', '优化一下', '适当', '尽量', '差不多', '相关', '一些'];
+const VAGUE_WORDS = ['做好', '做好点', '完善', '优化一下', '适当', '尽量', '差不多', '相关', '一些', '整理一下', '弄弄', '搞个', '搞一下', '弄一下', '改一下', '检查下', '有点', '最近'];
 
 /** 指代不明：执行时 AI 只能靠猜的表达 */
-const AMBIGUOUS_REFS = ['那几个', '相关资料', '这些文件', '那些东西', '那个文件'];
+const AMBIGUOUS_REFS = ['那几个', '相关资料', '这些文件', '那些东西', '那个文件', '上次', '这次', '那天', '同行', '那个'];
 
 /**
  * 可执行性风险信号库：CLI 确定性检测 AI 能力圈边界的表达（词表命中，零成本）
@@ -160,13 +162,35 @@ export function detectExecRisks(spec: TaskSpec): ClarifyIssue[] {
  * projectRoot：引用基准（缺省 = 任务目录，保持向后兼容；命令层传项目根，与 output/artifacts 一致）
  * 返回分级清单，用户自己决定补哪条、删哪条、哪条放默认值
  */
-export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyIssue[] {
+export function detectTaskIssues(spec: TaskSpec, projectRoot?: string, knownArtifacts?: Set<string>, opts?: OutputLocOptions): ClarifyIssue[] {
   const refBase = projectRoot || spec.dir;
   const issues: ClarifyIssue[] = [];
   // —— 确定性信号 ——
   const v = validateRequired(spec);
   for (const m of v.missing) {
     issues.push({ level: 'blocking', taskId: spec.id, message: `缺少必填项 ${m}（三必填：goal/output/acceptance）` });
+  }
+  // —— 产出物位置三查：用户指定优先，类型默认兜底 ——
+  // 1. 描述里明确说了产出位置但 output 未填 → 按用户指定的补
+  // 2. 描述里的产出位置与 output 不一致 → 亮明冲突，按用户指定的来
+  // 3. 产出位置未指明 → 默认落位建议（代码/数据类型提示明确文件或目录）
+  const stated = extractStatedPaths(`${spec.goal}\n${spec.body}`);
+  const outRaw = (spec.output || '').trim();
+  if (stated.length) {
+    const outHit = stated.every((pt) => !outRaw.includes(pt)) ? stated[0] : '';
+    if (!outRaw) {
+      issues.push({ level: 'suggest', taskId: spec.id, message: `任务描述指出产出位置「${stated[0]}」，output 未填——用户指定的位置优先，建议 output: ${stated[0]}` });
+    } else if (outHit) {
+      issues.push({ level: 'suggest', taskId: spec.id, message: `任务描述指出产出位置「${outHit}」，output 为「${outRaw}」——不一致，按用户指定的来` });
+    }
+  } else if (!outRaw) {
+    const typeDef = resolveTaskType(findMetaDir(spec.dir), spec.type);
+    const def = defaultOutputFor(spec, typeDef, opts);
+    if (def) {
+      issues.push({ level: 'suggest', taskId: spec.id, message: `产出物位置未指明——默认按类型 ${spec.type} 落位 ${def}（任务描述中已指定的以指定为准）` });
+    } else {
+      issues.push({ level: 'suggest', taskId: spec.id, message: `产出物位置未指明——${typeDef.code ? '代码' : '数据'}任务请明确产出/改动的文件或目录（如 src/xxx.ts / data/xxx.csv）` });
+    }
   }
   // 验收只有软门禁：无人值守没有机器可查的地基
   if (spec.acceptance && !spec.acceptance.artifacts.length && !spec.acceptance.checks.length && spec.acceptance.review.trim()) {
@@ -176,7 +200,8 @@ export function detectTaskIssues(spec: TaskSpec, projectRoot?: string): ClarifyI
   const refs = extractReferences(`${spec.goal}\n${spec.body}`);
   const missingRefs = refs
     .filter((r) => r.kind !== 'url')
-    .filter((r) => !existsSync(isAbsolute(r.target) ? r.target : resolve(refBase, r.target)));
+    .filter((r) => !existsSync(isAbsolute(r.target) ? r.target : resolve(refBase, r.target)))
+    .filter((r) => !(knownArtifacts && [...knownArtifacts].some((p) => p === r.target || p.endsWith('/' + r.target)))); // 上游任务将要产出的文件不误报（依赖链场景；含 basename 写法兜底）
   if (missingRefs.length) {
     const names = missingRefs.slice(0, 3).map((r) => r.target).join('、') + (missingRefs.length > 3 ? ` 等 ${missingRefs.length} 处` : '');
     issues.push({ level: 'blocking', taskId: spec.id, message: `引用的文件/图片不存在（${names}）——执行时 AI 读不到真实内容，先补文件或改引用` });
@@ -272,17 +297,56 @@ export function detectDanglingDeps(queue: QueueScan): ClarifyIssue[] {
   return issues;
 }
 
-/** 产出路径冲突：两个任务写同一位置（覆盖顶层与模块子任务） */
+/** 产出路径冲突：两个任务写同一位置（覆盖顶层与模块子任务）；纯目录落位（以 / 结尾）是占位声明不算最终产物，不判冲突 */
 export function detectOutputConflicts(queue: QueueScan): ClarifyIssue[] {
   const issues: ClarifyIssue[] = [];
   const seen = new Map<string, string>();
   for (const t of allTasks(queue)) {
     const out = t.output.trim();
     if (!out) continue;
+    if (out.endsWith('/')) continue;
     if (seen.has(out)) {
       issues.push({ level: 'blocking', taskId: t.id, message: `产出路径冲突：「${out}」已被任务 ${seen.get(out)} 使用` });
     } else {
       seen.set(out, t.id);
+    }
+  }
+  return issues;
+}
+
+/**
+ * 隐式依赖推导：任务引用了他人产物却未声明 depends-on——把「AI 只能脑补上下游」显性化为建议。
+ * 匹配规则：引用路径精确命中或后缀命中（basename 一致，兼容反引号截断历史数据）某任务的 acceptance.artifacts；
+ * 排除自己产出的路径与已声明 depends-on 的上游（那些关系用户已表达，不重复提醒）。
+ * 只建议不自动改：依赖声明是用户的表达，处理权在人（与 clarify 一贯哲学一致）。
+ */
+export function detectImplicitDeps(queue: QueueScan): ClarifyIssue[] {
+  const issues: ClarifyIssue[] = [];
+  const tasks = allTasks(queue);
+  const ownerByPath = new Map<string, string>();
+  for (const t of tasks) {
+    for (const a of t.acceptance?.artifacts || []) {
+      if (a.path && !ownerByPath.has(a.path)) ownerByPath.set(a.path, t.id);
+    }
+  }
+  const ownedPaths = [...ownerByPath.keys()];
+  for (const t of tasks) {
+    const declared = new Set(t.dependsOn);
+    const refs = extractReferences(`${t.goal}\n${t.body}`);
+    for (const r of refs) {
+      // 精确命中优先，后缀命中兜底（bareRe 历史截断场景）
+      let owner = ownerByPath.get(r.target);
+      if (!owner) {
+        const hit = ownedPaths.find((p) => p.endsWith('/' + r.target));
+        owner = hit ? ownerByPath.get(hit) : undefined;
+      }
+      if (!owner || owner === t.id || declared.has(owner)) continue;
+      issues.push({
+        level: 'suggest',
+        taskId: t.id,
+        message: `引用上游产物「${r.target}」（任务 ${owner} 产出）但未声明 depends-on——不补则 ${owner} 可能后跑，执行时拿不到真实产物只能脑补；建议 SPEC.md 补 depends-on: ${owner}`,
+      });
+      break; // 每任务只报第一条，其余自查
     }
   }
   return issues;
@@ -417,7 +481,7 @@ function escHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
-/** 体检报告 HTML（taskq clarify --html）：三档红黄灰分组卡片，与 PANEL.html 同视觉语言 */
+/** 体检报告 HTML（taskq clarify --html）：四档红黄灰靛分组卡片，与 PANEL.html 同视觉语言 */
 export function renderClarifyHtml(issues: ClarifyIssue[]): string {
   const blocking = issues.filter((i) => i.level === 'blocking');
   const suggest = issues.filter((i) => i.level === 'suggest');

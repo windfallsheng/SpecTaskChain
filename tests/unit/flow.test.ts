@@ -196,6 +196,22 @@ describe('批次接力（taskq execute）', () => {
     expect(r2.summary).toContain('队列已清空');
   });
 
+  it('按计划执行：计划圈定任务跑完，队列还有计划外待办 → 提示 --replan 而非「队列已清空」', () => {
+    const cfg = makeCfg();
+    makeTask(cfg, '01-a');
+    makeTask(cfg, '02-b');
+    const statePath = join(cfg.metaDir, 'state.json');
+    batchRelay(cfg, { batchSize: 1 }); // 只领 01-a：初始化 state.json 且 02-b 无状态条目（未领取）
+    const s = JSON.parse(readFileSync(statePath, 'utf-8'));
+    s.tasks['01-a'].status = 'done'; // 计划圈定的任务已完成
+    writeFileSync(statePath, JSON.stringify(s));
+    const r = batchRelay(cfg, { batchSize: 3, taskIds: ['01-a'] });
+    expect(r.exitCode).toBe(0);
+    expect(r.summary).toContain('计划圈定任务已完成');
+    expect(r.summary).toContain('--replan');
+    expect(r.summary).not.toContain('队列已清空');
+  });
+
   it('首任务 draft 拦停：exit 12、一个不领', () => {
     const cfg = makeCfg();
     makeTask(cfg, '01-a', { draft: true });
@@ -245,8 +261,10 @@ describe('端到端流水线（taskq pipeline）', () => {
     expect(out).toContain('[TASKQ_PIPELINE]');
     expect(out).toContain('阶段 1：拆分');
     expect(out).toContain('阶段 2：澄清');
-    expect(out).toContain('阶段 3：执行');
-    expect(out).toContain('阶段 4：收尾');
+    expect(out).toContain('阶段 3：列计划');
+    expect(out).toContain('阶段 4：执行');
+    expect(out).toContain('阶段 5：收尾');
+    expect(out).toContain('taskq plan');
     expect(out).toContain('拦停点');
   });
 

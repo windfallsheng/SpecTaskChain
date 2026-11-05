@@ -6,6 +6,7 @@ import { recognizeIntent, detectOrchestration, BatchRef, Orchestration, Orchestr
 import { scanQueue } from '../core/queue';
 import { resolveBatchRef, renderBatchCandidates } from '../core/batch-resolve';
 import { clarifyCommand } from './clarify';
+import { planCommand, resolvePlans, planBeforeExecute } from './plan';
 import { relayNext, batchRelay, renderBatchResult } from '../core/runner';
 import { renderRunResult } from './run';
 import { statusCommand } from './status';
@@ -48,16 +49,32 @@ export function askCommand(cfg: TaskQConfig, input: string): AskResult {
       // 批次引用先行裁决（「预算那批」→ 语义定位；未决亮候选清单，不瞎猜）
       const settled = settleBatch(cfg, result.params.batchRef);
       if (settled.blocked) return { output: settled.blocked, exitCode: 0 };
+      // 按计划执行（--plans 语义）：「按计划执行 A,B」→ 命名计划任务集；缺计划报错不瞎猜
+      let planTaskIds: string[] | undefined;
+      if (result.params.planNames) {
+        const pr = resolvePlans(cfg, settled.id, result.params.planNames);
+        if (pr.missing.length) return { output: `❌ 计划不存在：${pr.missing.join('、')}。taskq plan --list 看现有计划。`, exitCode: 12 };
+        planTaskIds = pr.taskIds;
+      }
       // 直调 relayNext 拿退出码（runCommand 只返回文本会丢失接力信号）
-      const r = relayNext(cfg, { batch: settled.id });
+      const r = relayNext(cfg, { batch: settled.id, taskIds: planTaskIds });
       return { output: renderRunResult(r), exitCode: r.exitCode };
     }
     case 'execute': {
       const settled = settleBatch(cfg, result.params.batchRef);
       if (settled.blocked) return { output: settled.blocked, exitCode: 0 };
       // 批次大小走意图识别（「一次领 5 个」→ 5），未识别时 undefined 走默认 3
-      const r = batchRelay(cfg, { batch: settled.id, batchSize: result.params.batchSize });
-      return { output: renderBatchResult(r), exitCode: r.exitCode };
+      // 按计划执行（--plans 语义）：命名计划任务集优先；定向执行跳过仪式（不重列全景计划）
+      let planTaskIds: string[] | undefined;
+      if (result.params.planNames) {
+        const pr = resolvePlans(cfg, settled.id, result.params.planNames);
+        if (pr.missing.length) return { output: `❌ 计划不存在：${pr.missing.join('、')}。taskq plan --list 看现有计划。`, exitCode: 12 };
+        planTaskIds = pr.taskIds;
+      }
+      // 先谋后动：批量执行前默认落全景计划（口语入口无定向概念，照走仪式）；已有计划沿用并按计划圈定任务集
+      const planRitual = planBeforeExecute(cfg, settled.id || undefined, { directed: Boolean(result.params.planNames) });
+      const r = batchRelay(cfg, { batch: settled.id, batchSize: result.params.batchSize, taskIds: planTaskIds || planRitual.planTaskIds });
+      return { output: (planRitual.text ? planRitual.text + '\n\n' : '') + renderBatchResult(r), exitCode: r.exitCode };
     }
     case 'pipeline': {
       // 提取素材（「跑流水线 docs/新需求.md」→ docs/新需求.md）；无素材给用法（流水线需要入口素材，不猜）
@@ -79,10 +96,21 @@ export function askCommand(cfg: TaskQConfig, input: string): AskResult {
     }
     case 'init':
       return { output: initCommand(cfg.projectRoot), exitCode: 0 };
+    case 'plan': {
+      // 计划意图：命名计划（--name + 可选 --tasks/--module 圈定）与查看（--list/--show）由 planCommand 承接
+      // 「计划里带哪些任务」用 --tasks/--module；「按计划执行」是 run 的 --plans，用户说跑时走 run 意图
+      const m = input.match(/计划[:：]?\s*[（(]?["「]?([^"」，,、]+)/);
+      const name = m ? m[1].trim() : undefined;
+      const settled = settleBatch(cfg, result.params.batchRef);
+      if (settled.blocked) return { output: settled.blocked, exitCode: 0 };
+      return { output: planCommand(cfg, { batch: settled.id || undefined, name: /列|排|制定|做|出/.test(input) ? name : undefined }), exitCode: 0 };
+    }
     case 'status': {
       const settled = settleBatch(cfg, result.params.batchRef);
       if (settled.blocked) return { output: settled.blocked, exitCode: 0 };
-      return { output: statusCommand(cfg, { batch: settled.id }), exitCode: 0 };
+      // 看板词（「看板/面板/dashboard」）→ 生成 HTML 批次看板（dashboard-{批次}.html 可并存）
+      const panel = /看板|面板|dashboard|panel/i.test(input);
+      return { output: statusCommand(cfg, { batch: settled.id, panel }), exitCode: 0 };
     }
     case 'report': {
       const settled = settleBatch(cfg, result.params.batchRef);
@@ -153,6 +181,7 @@ function stepCommand(batchId: string, orch: Orchestration, step: OrchestrationSt
   switch (step.intent) {
     case 'clarify': return 'taskq clarify';
     case 'split': return 'taskq split <素材路径或文字>';
+    case 'plan': return 'taskq plan';
     case 'new': return `taskq new <任务目标>${batch}`;
     case 'fix': return 'taskq fix --yes';
     case 'execute': return `taskq execute${batch}${size}`;

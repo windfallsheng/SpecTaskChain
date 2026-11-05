@@ -1,11 +1,11 @@
 // ask 意图识别：词典匹配为主（口语入口，零学习成本）
 // 宿主 AI 负责指代消解（「上面的内容」→ 文件路径），CLI 负责意图 + 参数提取 + 精确执行
-export type IntentId = 'new' | 'clarify' | 'run' | 'execute' | 'pipeline' | 'split' | 'init' | 'status' | 'report' | 'history' | 'list' | 'done' | 'reset' | 'fix' | 'help';
+export type IntentId = 'new' | 'clarify' | 'run' | 'execute' | 'pipeline' | 'split' | 'init' | 'status' | 'report' | 'history' | 'list' | 'done' | 'reset' | 'fix' | 'plan' | 'help';
 
 export interface IntentResult {
   intent: IntentId;
   confidence: number;
-  params: { taskId?: string; taskName?: string; group?: string; file?: string; target?: string; hard?: boolean; batchSize?: number; batchRef?: BatchRef };
+  params: { taskId?: string; taskName?: string; group?: string; file?: string; target?: string; hard?: boolean; batchSize?: number; batchRef?: BatchRef; planNames?: string[] };
   fullCommand: string;
   notes: string[];
 }
@@ -55,14 +55,21 @@ const INTENTS: { intent: IntentId; triggers: string[]; patterns: RegExp[]; base:
   {
     intent: 'run',
     base: 64,
-    triggers: ['跑队列', '开始执行', '跑起来', '开始跑', '执行队列', 'run', '继续接力', '接着跑', '继续跑'],
-    patterns: [/^(?:跑|执行)(?:队列|任务)?$/, /继续(?:跑|接力)/],
+    triggers: ['跑队列', '开始执行', '跑起来', '开始跑', '执行队列', 'run', '继续接力', '接着跑', '继续跑', '按计划执行', '执行计划', '跑计划'],
+    patterns: [/^(?:跑|执行)(?:队列|任务)?$/, /继续(?:跑|接力)/, /(?:按|照|跑|执行)计划/],
+  },
+  {
+    // 计划资产：列计划/做计划/看计划——「计划」弱信号（日常对话常含），须配动词才触发；裸词 plan 兜底
+    intent: 'plan',
+    base: 63,
+    triggers: ['列计划', '排计划', '制定计划', '做个计划', '做计划', '计划一下', '看计划', '重列计划', '重新列计划', 'plan'],
+    patterns: [/列(?:个|一下|份)?计划/, /(?:制定|排|做|出)(?:个|一份)?计划/, /计划一下/, /看(?:看|下|一下)?计划/, /重(?:新)?列(?:个|一下|份)?计划/],
   },
   {
     intent: 'status',
     base: 62,
-    triggers: ['什么状态', '进度', '进展如何', '队列状态', 'status', '看下进度', '现在到哪了'],
-    patterns: [/(?:队列)?(?:状态|进度)/],
+    triggers: ['什么状态', '进度', '进展如何', '队列状态', 'status', '看下进度', '现在到哪了', '看板', '面板', 'dashboard', 'panel'],
+    patterns: [/(?:队列)?(?:状态|进度)/, /看(?:看|下|一下)?(?:批次)?看板/, /dashboard/i],
   },
   {
     intent: 'report',
@@ -119,6 +126,7 @@ export function parseBatchSize(input: string): number | undefined {
 const ACTION_WORDS: { words: string[]; intent: IntentId }[] = [
   { words: ['澄清', '体检', '检查'], intent: 'clarify' },
   { words: ['拆分', '切分', '拆任务'], intent: 'split' },
+  { words: ['列计划', '排计划'], intent: 'plan' },
   { words: ['新建', '建任务', '创建任务', '加任务'], intent: 'new' },
   { words: ['修复'], intent: 'fix' },
   { words: ['执行', '接力', '跑起来'], intent: 'execute' },
@@ -157,7 +165,7 @@ function stripBatchDecorators(raw: string): string {
   for (;;) {
     const n = p
       .replace(/^(?:导入到|导入|并入|加入|加到|加进|放进|放到|放入|建到|建在|创建到|移入)/, '')
-      .replace(/^(?:那个|这个|进|入|到|加|放|往|在|给|向|把|将|上|的)/, '')
+      .replace(/^(?:看看|看下|瞧|瞧一瞧|看|那个|这个|进|入|到|加|放|往|在|给|向|把|将|上|的)/, '')
       .replace(/(?:那个|这个|这|那|的|里|里面)$/, '');
     if (n === p) break;
     p = n;
@@ -226,6 +234,7 @@ export function detectOrchestration(input: string): Orchestration | null {
   const LABELS: Record<string, { label: string; explanation: string; gate: boolean }> = {
     clarify: { label: '体检澄清', explanation: 'taskq clarify 全量体检；阻塞项先修（taskq fix --yes 机械项），非全绿不往下走', gate: true },
     split: { label: '拆分任务', explanation: '素材拆成任务草案落盘（单独任务 + 模块级任务）；拆分清单给用户确认', gate: true },
+    plan: { label: '列执行计划', explanation: 'taskq plan 全景计划落盘（执行前依据，可审可改）', gate: false },
     new: { label: '新建任务', explanation: '对话成规格，draft 骨架落盘', gate: false },
     fix: { label: '自动修复', explanation: 'taskq fix --yes 应用机械修复', gate: false },
     execute: { label: '接力执行', explanation: 'taskq execute 批量接力，宿主 AI 循环续跑直到队列清空', gate: true },
@@ -281,6 +290,11 @@ export function recognizeIntent(input: string): IntentResult {
       if (def.intent === 'execute') {
         const n = parseBatchSize(input);
         if (n) params.batchSize = n;
+      }
+      // run/execute 专属：按计划执行（「按计划执行 A,B」→ planNames=[A,B]；「执行计划」无名单 = 沿用批次现有计划）
+      if (def.intent === 'run' || def.intent === 'execute') {
+        const pm = input.match(/(?:按计划执行|计划执行|执行计划|按计划|照计划|跑计划)[:：]?\s*[（(]?["「]?([^"」，,、]+(?:[,，、][^"」，,、]+)*)/);
+        if (pm) params.planNames = pm[1].split(/[,，、]/).map((x) => x.trim()).filter(Boolean);
       }
       // reset 专属：目标（任务 ID / 模块 / 批次 / --all）+ --hard。
       // 具体目标与全局词同时出现时具体目标优先（「把 34 从头再来」只复位 34，不误伤全队列）

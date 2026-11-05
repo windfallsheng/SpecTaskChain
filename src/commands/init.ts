@@ -69,9 +69,9 @@ function renderSkillFiles(tool: string): SkillFile[] {
       skillFm('taskq-ask', [
         'SpecTaskChain 任务队列总入口。仅在用户明确要求通过 taskq 命令行工具操作任务队列时触发：',
         '建任务（new，对话成规格）、文档拆任务（split）、端到端流水线（pipeline）、',
-        '体检（clarify）、无人值守接力（run/execute）、验收登记（done）、重跑复位（reset）、',
+        '体检（clarify）、执行计划（plan）、无人值守接力（run/execute）、验收登记（done）、重跑复位（reset）、',
         '队列查看（status/list/report）、初始化（init）。',
-        '高频操作有专属入口：/taskq-new /taskq-run /taskq-clarify /taskq-done；本入口 /taskq-ask 与它们同构（对齐 speccore 的 spec-ask 引擎 + 专属双模式）。',
+        '高频操作有专属入口：/taskq-new /taskq-run /taskq-plan /taskq-clarify /taskq-done；本入口 /taskq-ask 与它们同构（对齐 speccore 的 spec-ask 引擎 + 专属双模式）。',
         noScope,
       ].join('\n')),
       '',
@@ -89,6 +89,7 @@ function renderSkillFiles(tool: string): SkillFile[] {
       '| :--- | :--- |',
       '| 建任务 | taskq new "描述" [--type doc] [--group 模块] [--batch 批次] [--role 角色] |',
       '| 文档拆任务 | taskq split <文档或文字> |',
+      '| 列执行计划 | taskq plan [--name 计划名] [--tasks id1,id2] [--module 模块] / taskq plan --list / --show 名 |',
       '| 端到端流水线 | taskq pipeline <描述/文件/目录> |',
       '| 体检 | taskq clarify [--task ID] [--chain] |',
       '| 接力执行 | taskq run [--batch 批次\|all] [--task ID] [--module 模块] / taskq execute --batch-size 3 |',
@@ -140,15 +141,21 @@ function renderSkillFiles(tool: string): SkillFile[] {
       ['收到 [TASKQ_PROMPT] 英译接力 → 把任务名英译为英文 slug，续跑 taskq new \'原话\' --name "english-slug"；没有合适的英文才降级拼音 --name "pinyin"（默认先英文再拼音）。',
        '`[TASKQ_SPEC_DRAFT]` → 按骨架写回 SPEC.md（frontmatter 三必填 goal/output/acceptance + 正文），写回后提醒用户 `taskq clarify --task <id>` 体检。',
        'draft 态任务 run 会拦截，补全 SPEC 才算定稿。']),
-    sub('taskq-run', 'taskq-run — 接力执行', '仅在用户要跑队列/执行任务/继续接力，或重新执行/重跑任务、从头再来时触发。',
-      '场景分流（按关键词判断，拿不准就问一句）：\n- 正常接力/继续跑 → execute_command("taskq run")；定向用 --task <id> / --module <模块名> / --batch <批次|all>；批量领用 taskq execute --batch-size N。\n- 重新执行/重跑某个任务或模块 → 先 execute_command("taskq reset X")（软复位：状态回 todo、留痕保留=基于现有内容调整补充）再 execute_command("taskq run --task X")（或 --module/--batch）。\n- 从头再来/全部重来 → 先 execute_command("taskq reset --all --hard")（连留痕清空）再 execute_command("taskq run")。',
+    sub('taskq-run', 'taskq-run — 接力执行', '仅在用户要跑队列/执行任务/继续接力，或重新执行/重跑任务、从头再来，以及按阶段跑流水线（run clarify/plan to execute 等）、按计划接力（run --plans）时触发。',
+      '场景分流（按关键词判断，拿不准就问一句）：\n- 正常接力/继续跑 → execute_command("taskq run")；定向用 --task <id> / --module <模块名> / --batch <批次|all>；批量领用 taskq execute --batch-size N（execute 默认「先谋后动」：无计划先落全景计划再领任务，已有计划自动沿用并按计划圈定任务集执行，--replan 重列、--no-plan 跳过）。\n- 按计划接力 → execute_command("taskq run --plans <名1>,<名2>")（多计划取任务并集，按拓扑序；批量同理 taskq execute --plans a,b）。\n- 按阶段跑流水线 → execute_command("taskq run clarify") / taskq run split <素材> / taskq run plan（单跑列计划）/ taskq run plan to execute（列计划→接力）；无参 taskq run = 智能续跑。\n- 重新执行/重跑某个任务或模块 → 先 execute_command("taskq reset X")（软复位：状态回 todo、留痕保留=基于现有内容调整补充）再 execute_command("taskq run --task X")（或 --module/--batch）。\n- 从头再来/全部重来 → 先 execute_command("taskq reset --all --hard")（连留痕清空）再 execute_command("taskq run")。',
       ['`[TASKQ_PROMPT]` … `[TASKQ_PROMPT_END]` → **立即执行**：产出写到指定路径，完成后 `taskq done <id> --verdict "pass 理由"`，同一会话继续 `taskq run` 接力下一个。',
-       '退出码 10 = 有任务领取（按上条执行）；退出码 12 = 拦截（draft/doing/failed），停下向用户说明原因；退出码 0 = 队列清空。',
+       '退出码 10 = 有任务领取（按上条执行）；退出码 12 = 拦截（draft/doing/failed），停下向用户说明原因；退出码 0 = 队列清空（按计划执行时若队列还有计划外待办，输出会提示 --replan 重列纳入）。',
        '执行中把进度写进任务目录 PROGRESS.md（每阶段一句），断点续跑时自动注入。',
        '重跑三态：继续跑 = 断点接力；重跑 X = 软复位调整补充；从头再来 = --hard 全清。']),
+    sub('taskq-plan', 'taskq-plan — 执行计划', '仅在用户要列计划/做计划/制定计划/看计划，或对某些任务、模块先圈一份执行计划（taskq plan），以及查看计划列表/详情（--list/--show）、按计划接力执行（run/execute --plans）时触发。',
+      '场景分流（按关键词判断，拿不准就问一句）：\n- 全景计划（整批拓扑顺序 + 关键路径）→ execute_command("taskq plan")。\n- 给部分任务/模块圈命名计划 → execute_command("taskq plan --name \"计划名\" --tasks <id1>,<id2> [--module <模块ID>]")；命名计划落批次 overview/plans/{slug}.md。\n- 看有哪些计划 → execute_command("taskq plan --list")；看某计划详情 → execute_command("taskq plan --show <名>")。\n- 按计划接力执行 → execute_command("taskq run --plans <名1>,<名2>")（多计划取任务并集，仍按拓扑序）；批量领取同理 taskq execute --plans a,b。\n- 直接批量执行（execute 多任务）→ 无需先手动列计划：taskq execute 默认「先谋后动」——先落全景计划再领任务；批次已有计划（PLAN.md/PLAN.html）则自动沿用并按计划圈定的任务集执行，不重复列、不覆盖人工审阅调整；要刷新计划加 --replan，跳过计划仪式加 --no-plan。\n- 流水线剧本 → taskq run plan 单跑列计划一步；taskq run plan to execute 跑「列计划 → 接力执行」；pipeline 六阶段中阶段 3 就是列计划（确定性一步非拦停）。',
+      ['计划是 SpecTaskChain 流水线中的一个点，也是一等资产：谋已定，执行的就是这个计划。',
+       '计划落盘形态由批次 BATCH.yaml 的 plan-format 控制：md（只落 .md 底稿）/ html（默认，md + 同视觉 HTML 页双生）/ none（只终端不落盘，一次性视图不可被 --plans 引用）；临时覆盖 taskq plan --format md。',
+       '计划 md 头部 frontmatter 的 tasks 清单是机读锚点——run/execute --plans 靠它恢复任务集、execute 沿用计划时靠它锁定执行范围，改计划文件时别删 frontmatter。',
+       '计划生成不阻塞主流程：execute 前置计划写盘失败/渲染出错只降级为一行警告，接力照常进行。']),
     sub('taskq-clarify', 'taskq-clarify — 体检', '仅在用户要体检/澄清/检查任务规格时触发。',
       '直接执行：execute_command("taskq clarify")——单任务 --task <id> / 全链 --chain / 指定文件 --file 路径。',
-      ['报告三档：⛔ 阻塞先处理（补 / 给默认值 / 标记 draft / 无视四选一）→ ⚠️ 建议 → 待定。',
+      ['报告四档：⛔ 阻塞先处理（补 / 给默认值 / 标记 draft / 无视四选一）→ ⚠️ 建议 → ⏳ 待定 → 🤖 可执行性风险（认证/权限/物理动作/平台账号/资金合规/外部等待六类，每条自带方案菜单）。',
        '体检是随叫随到的：写完查 / 建链查 / 翻车查。',
        '澄清留痕：澄清（补正文）后必须在 SPEC.md 正文尾部写「## 澄清记录」章节——逐条列原模糊点 / 备选方案 / 应用的方案与理由；无人值守（自动）模式必写（用户事后要能追溯澄清了什么、选了哪个方案），交互模式用户全程在场可免；fix 机械修自动写 frontmatter fix-log、--decide 写 decisions，无需手写。']),
     sub('taskq-done', 'taskq-done — 验收登记', '仅在用户要验收任务/登记完成时触发。',
@@ -324,7 +331,7 @@ export function initCommand(cwd: string, opts: InitOptions = {}): string {
       const skillRels = writeToolSkills(cfg.projectRoot, tool);
       lines.push('', `  ✅ 已生成 ${tool} 的宿主接力规则：${rel}（重复执行 init 即刷新）`);
       if (skillRels.length > 0) {
-        lines.push(`  ✅ 已生成 ${tool} 的 SKILL 入口 ${skillRels.length} 个（命令下拉可见 /taskq-ask 及 /taskq-new /taskq-run /taskq-clarify /taskq-done；重复执行 init 即刷新）`);
+        lines.push(`  ✅ 已生成 ${tool} 的 SKILL 入口 ${skillRels.length} 个（命令下拉可见 /taskq-ask 及 /taskq-new /taskq-run /taskq-plan /taskq-clarify /taskq-done；重复执行 init 即刷新）`);
       }
     }
   }

@@ -73,9 +73,9 @@ describe('help <命令> 单命令详情', () => {
     expect(d).toContain('10 有下一任务');
     expect(d).toContain('12 拦截');
   });
-  it('init 详情含 5 SKILL 说明与 --update', () => {
+  it('init 详情含 6 SKILL 说明与 --update', () => {
     const d = commandDetail('init');
-    expect(d).toContain('/taskq-ask 总入口 + /taskq-new /taskq-run /taskq-clarify /taskq-done');
+    expect(d).toContain('/taskq-ask 总入口 + /taskq-new /taskq-run /taskq-plan /taskq-clarify /taskq-done');
     expect(d).toContain('--update');
   });
   it('13 个命令全有详情', () => {

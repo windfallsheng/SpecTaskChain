@@ -10,8 +10,9 @@ import { readBatchConfig, SYSTEM_BATCH_DEFAULTS, BatchConfig } from './batch-con
 import { buildDoneAssessment, dispatchAssessment, assessmentNotice, resolveReportSwitch } from './assessment';
 import { resolveTaskType } from './task-type';
 import { daysOverdue } from './task-spec';
-import { resolveReferences } from './references';
+import { resolveReferences, extractReferences } from './references';
 import { renderEffectiveRoleSegment, resolveEffectiveRole } from './task-role';
+import { buildPlanModel, renderPlanBrief } from './plan';
 
 /** 每任务尝试上限（失败重试，超过标记 failed 不再接力）——保留导出兼容；批次可用 config/BATCH.yaml 的 max-attempts 覆盖 */
 export const MAX_ATTEMPTS = SYSTEM_BATCH_DEFAULTS['max-attempts'];
@@ -36,6 +37,43 @@ export interface NextTaskInfo {
   prompt: string;      // 交给宿主 AI 的完整 prompt
   exitCode: number;    // 10 = 有下一任务（宿主 AI 接力），12 = 拦截（draft / 模块缺共享 spec / doing 进行中 / failed 需人工介入），0 = 队列已空
   summary: string;     // 状态摘要
+}
+
+/** 疑似上游：任务引用了他人将要产出的产物（acceptance.artifacts 命中）却未声明 depends-on——执行时点名，AI 判断是否需要真实内容 */
+export interface SuspectedUpstream {
+  owner: string;   // 产物所属任务 ID
+  goal: string;    // 所属任务目标（截断前原文，渲染时截）
+  paths: string[]; // 本任务引用到的该上游产物路径
+}
+
+/** 疑似上游推导：与 clarify 隐式依赖推导同一套匹配（精确 + 后缀兜底），排除自己产物与已声明 depends-on 的上游
+ * 只推导不自动改：引用上游产物 ≠ 需要其完成（可能只是参考格式）——语义判断留给执行 AI */
+export function detectSuspectedUpstreams(exec: ExecutableTask, allTasks: ExecutableTask[]): SuspectedUpstream[] {
+  const byId = new Map(allTasks.map((t) => [t.spec.id, t]));
+  const ownerByPath = new Map<string, string>();
+  for (const t of allTasks) {
+    for (const a of t.spec.acceptance?.artifacts || []) {
+      if (a.path && !ownerByPath.has(a.path)) ownerByPath.set(a.path, t.spec.id);
+    }
+  }
+  const ownedPaths = [...ownerByPath.keys()];
+  const declared = new Set(exec.spec.dependsOn);
+  const hits = new Map<string, string[]>(); // ownerId → 引用路径（去重）
+  for (const r of extractReferences(`${exec.spec.goal}\n${exec.spec.body}`)) {
+    let owner = ownerByPath.get(r.target);
+    if (!owner) {
+      const hit = ownedPaths.find((p) => p.endsWith('/' + r.target));
+      owner = hit ? ownerByPath.get(hit) : undefined;
+    }
+    if (!owner || owner === exec.spec.id || declared.has(owner)) continue;
+    const arr = hits.get(owner) || [];
+    if (!arr.includes(r.target)) arr.push(r.target);
+    hits.set(owner, arr);
+  }
+  return [...hits.entries()].map(([owner, paths]) => {
+    const t = byId.get(owner)!;
+    return { owner, goal: t.spec.goal, paths };
+  });
 }
 
 /** 上游依赖完成摘要：deps 已 done 时把 goal + verdict + 产物清单注入下游 prompt（不注入全文）——下游衔接上游产出而非脑补 */
@@ -68,7 +106,7 @@ function buildUpstreamSegment(deps: ExecutableTask[], state: Record<string, Task
 }
 
 /** 构建任务执行 prompt：规格全文 + 执行留痕 + 模块身份与公共约束 + 类型默认约束 + 引用资料 + 动作义务 + 验收标准 + 输出协议 */
-export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRoot: string, upstream?: { deps: ExecutableTask[]; state: Record<string, TaskRunState> }): string {
+export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRoot: string, upstream?: { deps: ExecutableTask[]; state: Record<string, TaskRunState>; dependents?: ExecutableTask[]; suspected?: SuspectedUpstream[] }): string {
   const spec = exec.spec;
   const typeDef = resolveTaskType(metaDir, spec.type);
   const lines: string[] = [];
@@ -90,6 +128,21 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
   // —— 上游依赖完成摘要（deps 声明了依赖才出现：goal + verdict + 产物清单，不注入全文）——
   if (upstream?.deps.length) {
     lines.push(...buildUpstreamSegment(upstream.deps, upstream.state, projectRoot));
+  }
+  // —— 下游接力预告（有人 depends-on 我才出现：下游要引用的产物路径，产出时对齐，别让下游扑空）——
+  if (upstream?.dependents?.length) {
+    const myArts = (spec.acceptance?.artifacts || []).map((a) => a.path).filter(Boolean);
+    lines.push('## 下游接力预告');
+    lines.push('');
+    lines.push('以下任务依赖你的产出——完成时请保证产物路径与格式对齐其引用，别让下游扑空：');
+    lines.push('');
+    for (const d of upstream.dependents) {
+      const dGoal = d.spec.goal.length > 120 ? `${d.spec.goal.slice(0, 120)}…` : d.spec.goal;
+      const used = myArts.filter((p) => extractReferences(`${d.spec.goal}\n${d.spec.body}`).some((r) => r.target === p || p.endsWith('/' + r.target)));
+      lines.push(`### 下游：${d.spec.id}（${dGoal}）`);
+      if (used.length) lines.push(`- 它引用了你的产物：${used.join('、')}`);
+      lines.push('');
+    }
   }
   // —— 任务规格 ——
   lines.push('## 任务规格（SPEC.md 全文，用户自由表达，请完整理解）');
@@ -158,6 +211,19 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
       }
     }
   }
+  if (upstream?.suspected?.length) {
+    lines.push('## 🔎 疑似上游（未声明 depends-on）');
+    lines.push('');
+    lines.push('你引用了以下路径，它们是别的任务将要产出的，但你的 SPEC.md 未声明 depends-on：');
+    lines.push('');
+    for (const su of upstream.suspected) {
+      const suGoal = su.goal.length > 100 ? `${su.goal.slice(0, 100)}…` : su.goal;
+      lines.push(`- ${su.paths.join('、')}（任务 ${su.owner}：${suGoal} 的产物）`);
+    }
+    lines.push('');
+    lines.push('判断规则：若执行需要这些产物的真实内容，说明规格缺了依赖声明——本次按规格继续，完成后反馈用户补 `depends-on`；若只是路径/格式参考，忽略本段。');
+    lines.push('');
+  }
   if (badRefs.length) {
     lines.push('## ⚠️ 引用告警');
     lines.push('');
@@ -207,7 +273,7 @@ export function buildTaskPrompt(exec: ExecutableTask, metaDir: string, projectRo
  * - failed 任务 → 需人工介入（协议拦截，不无限重试）
  * - 有 doing 任务未完成（未超时）→ 有执行者在干活，不重复领取
  */
-export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?: string; task?: string; module?: string; noReport?: boolean; forceReport?: boolean } = {}): NextTaskInfo {
+export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?: string; task?: string; module?: string; taskIds?: string[]; noReport?: boolean; forceReport?: boolean } = {}): NextTaskInfo {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   const batchCfg = effectiveBatchConfig(cfg, queue.batches, opts.batch);
   // 批次聚焦：--batch 指定老批次；缺省 = 最近使用批次（写操作留下）> 最新批次；--batch all 全批次
@@ -225,14 +291,14 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
   let sequence = buildExecutionSequence(view);
   // 全量 ID 映射：定向执行（--task/--module）filter 后会丢上游——依赖摘要与就绪检查要跨 filter 找上游
   const fullById = new Map(sequence.map((e) => [e.spec.id, e]));
-  if (opts.task || opts.module) {
-    sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module });
+  if (opts.task || opts.module || opts.taskIds?.length) {
+    sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module, taskIds: opts.taskIds });
     if (sequence.length === 0) {
       return {
         task: null as any,
         prompt: '',
         exitCode: 12,
-        summary: `❌ 定向目标不存在：${opts.task ? `任务「${opts.task}」` : `模块「${opts.module}」`}。用 taskq list 查 ID（任务如 34-cshidaima，模块如 module-yingxiaomokuai）`,
+        summary: `❌ 定向目标不存在：${opts.task ? `任务「${opts.task}」` : opts.module ? `模块「${opts.module}」` : '计划圈定的任务'}。用 taskq list 查 ID（任务如 34-cshidaima，模块如 module-yingxiaomokuai）`,
       };
     }
   }
@@ -247,8 +313,19 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
         task: null as any,
         prompt: '',
         exitCode: 12,
-        summary: `⏳ 任务「${doing.spec.id}」正在执行中（${at} 领取）。执行者完成后会调 taskq done 登记；若执行者已中断，超过 24 小时自动重拾（或手动把 queue/.taskchain/state.json 中该任务状态改为 todo）`,
+        summary: `⏳ 任务「${doing.spec.id}」正在执行中（${at} 领取）。执行者完成后会调 taskq done 登记；若执行者已中断，超过 24 小时自动重拾（或 \`taskq reset ${doing.spec.id}\` 复位重跑）`,
       };
+    }
+    // 按计划（--plans/沿用计划）执行时，计划圈定任务跑完 ≠ 队列清空：队列可能还有计划外待办，须如实提示出口
+    if (opts.taskIds?.length) {
+      const inPlan = new Set(opts.taskIds);
+      const outside = buildExecutionSequence(view).filter((e) => {
+        const st = state[e.spec.id];
+        return !inPlan.has(e.spec.id) && (!st || (st.status !== 'done' && st.status !== 'doing')); // 无状态 = 未领取待办
+      });
+      if (outside.length) {
+        return { task: null as any, prompt: '', exitCode: 0, summary: `✅ 计划圈定任务已完成（${sequence.length} 个）。队列另有 ${outside.length} 个任务不在本计划内——taskq execute --replan 重列全景计划即可纳入接力` };
+      }
     }
     return { task: null as any, prompt: '', exitCode: 0, summary: `✅ 队列已清空：${sequence.length} 个任务全部完成${doneReportNotice(cfg, sequence, state, queue.batches, opts.batch, { noReport: opts.noReport, forceReport: opts.forceReport })}` };
   }
@@ -262,7 +339,7 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
       task: next,
       prompt: '',
       exitCode: 12,
-      summary: `⛔ 任务「${next.spec.id}」${hint}——需人工介入：检查产出与规格，修复后重验；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`,
+      summary: `⛔ 任务「${next.spec.id}」${hint}——需人工介入：检查产出与规格，修复后重验；或 \`taskq reset ${next.spec.id}\` 复位重跑`,
     };
   }
   if (next.module && next.module.constraintsMissing) {
@@ -282,10 +359,12 @@ export function relayNext(cfg: TaskQConfig, opts: { skipDraft?: boolean; batch?:
     };
   }
   const deps = next.spec.dependsOn.map((d) => fullById.get(d)).filter((d): d is ExecutableTask => !!d);
-  const prompt = buildTaskPrompt(next, cfg.metaDir, cfg.projectRoot, deps.length ? { deps, state } : undefined);
+  const dependents = [...fullById.values()].filter((e) => e.spec.dependsOn.includes(next.spec.id));
+  const suspected = detectSuspectedUpstreams(next, [...fullById.values()]);
+  const prompt = buildTaskPrompt(next, cfg.metaDir, cfg.projectRoot, deps.length || dependents.length || suspected.length ? { deps, state, dependents, suspected } : undefined);
   // 定向执行（--task/--module）可能绕过依赖顺序：上游未完成时亮明警告（不拦截——定向是明确意图，自己的队列自己负责）
   let depWarn = '';
-  if (opts.task || opts.module) {
+  if (opts.task || opts.module || opts.taskIds?.length) {
     const pendingDeps = deps.filter((d) => {
       const st = state[d.spec.id];
       return !st || st.status !== 'done';
@@ -401,10 +480,11 @@ export interface BatchRelayResult {
   exitCode: number;         // 10 = 有批待执行（宿主 AI 按序接力），12 = 拦截，0 = 队列已清空
   summary: string;          // 批状态摘要（含执行约定）
   stopReason?: string;      // 批后拦停原因（批内任务已发，批后的拦停提醒）
+  planBrief?: string;       // 开局执行计划摘要（批次全景：任务数/待做/依赖边/关键路径/接下来）
 }
 
 /** 领取一批任务（默认 3 个）：按执行序列取连续未完成任务，批内逐个渲染 prompt + 占位 doing */
-export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?: number; skipDraft?: boolean; task?: string; module?: string; noReport?: boolean; forceReport?: boolean } = {}): BatchRelayResult {
+export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?: number; skipDraft?: boolean; task?: string; module?: string; taskIds?: string[]; noReport?: boolean; forceReport?: boolean } = {}): BatchRelayResult {
   const queue = scanQueue(cfg.queueDir, cfg.metaDir);
   const batchCfg = effectiveBatchConfig(cfg, queue.batches, opts.batch);
   const focusBatch = opts.batch && opts.batch !== 'all' ? opts.batch : resolveDefaultBatch(cfg, queue.batches);
@@ -422,18 +502,20 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
   let sequence = buildExecutionSequence(view);
   // 全量 ID 映射：定向执行（--task/--module）filter 后会丢上游——依赖摘要与就绪检查要跨 filter 找上游
   const fullById = new Map(sequence.map((e) => [e.spec.id, e]));
-  if (opts.task || opts.module) {
-    sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module });
+  if (opts.task || opts.module || opts.taskIds?.length) {
+    sequence = filterExecutionSequence(sequence, { task: opts.task, module: opts.module, taskIds: opts.taskIds });
     if (sequence.length === 0) {
       return {
         tasks: [],
         prompts: [],
         exitCode: 12,
-        summary: `❌ 定向目标不存在：${opts.task ? `任务「${opts.task}」` : `模块「${opts.module}」`}。用 taskq list 查 ID（任务如 34-cshidaima，模块如 module-yingxiaomokuai）`,
+        summary: `❌ 定向目标不存在：${opts.task ? `任务「${opts.task}」` : opts.module ? `模块「${opts.module}」` : '计划圈定的任务'}。用 taskq list 查 ID（任务如 34-cshidaima，模块如 module-yingxiaomokuai）`,
       };
     }
   }
   const state = readState(cfg);
+  // 开局执行计划摘要：批次全景让宿主 AI 每轮都对齐「先干什么、后干什么、为什么」（依赖拓扑已算好）
+  const planBrief = renderPlanBrief(buildPlanModel(sequence, state));
   // 批大小优先级链：CLI --batch-size > 批次配置 batch-size > 系统默认（配置层已字段级兜底，这里只兜 CLI 显式 0/负数的病态输入）
   const batchSize = Math.max(1, opts.batchSize || batchCfg['batch-size']);
   const skipDraft = opts.skipDraft || batchCfg['skip-draft'];
@@ -445,13 +527,13 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
     const st = state[t.spec.id];
     if (st?.status === 'done') continue;
     if (st?.status === 'failed') {
-      stop = `⛔ 任务「${t.spec.id}」已失败 ${st.attempts} 次（达尝试上限 ${batchCfg['max-attempts']} 次）——需人工介入：检查产出与规格，修复后运行 \`taskq done ${t.spec.id} --verdict "..."\` 重新验收；或手动把 queue/.taskchain/state.json 中该任务状态改为 todo 重跑`;
+      stop = `⛔ 任务「${t.spec.id}」${st.attempts >= batchCfg['max-attempts'] ? `已失败 ${st.attempts} 次（达尝试上限 ${batchCfg['max-attempts']} 次）` : `处于 failed 态但仅尝试 ${st.attempts}/${batchCfg['max-attempts']} 次（未达上限）`}——需人工介入：检查产出与规格，修复后运行 \`taskq done ${t.spec.id} --verdict "..."\` 重新验收；或 \`taskq reset ${t.spec.id}\` 复位重跑`;
       break;
     }
     if (st?.status === 'doing') {
       const at = st.doingAt ? new Date(st.doingAt).getTime() : 0;
       if (Date.now() - at <= DOING_TIMEOUT_MS) {
-        stop = `⏳ 任务「${t.spec.id}」正在执行中（${st.doingAt} 领取）。执行者完成后会调 taskq done 登记；若执行者已中断，超过 24 小时自动重拾`;
+        stop = `⏳ 任务「${t.spec.id}」正在执行中（${st.doingAt} 领取）。执行者完成后会调 taskq done 登记；若执行者已中断，超过 24 小时自动重拾（或 \`taskq reset ${t.spec.id}\` 复位重跑）`;
         break;
       }
       // 孤儿 doing：领取超时视为执行者已中断，重拾（与 findNextPending 语义一致）
@@ -469,12 +551,25 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
 
   if (!taken.length) {
     if (stop) return { tasks: [], prompts: [], exitCode: 12, summary: stop };
+    // 按计划（--plans/沿用计划）执行时，计划圈定任务跑完 ≠ 队列清空：队列可能还有计划外待办，须如实提示出口
+    if (opts.taskIds?.length) {
+      const inPlan = new Set(opts.taskIds);
+      const outside = buildExecutionSequence(view).filter((e) => {
+        const st = state[e.spec.id];
+        return !inPlan.has(e.spec.id) && (!st || (st.status !== 'done' && st.status !== 'doing')); // 无状态 = 未领取待办
+      });
+      if (outside.length) {
+        return { tasks: [], prompts: [], exitCode: 0, summary: `✅ 计划圈定任务已完成（${sequence.length} 个）。队列另有 ${outside.length} 个任务不在本计划内——taskq execute --replan 重列全景计划即可纳入接力` };
+      }
+    }
     return { tasks: [], prompts: [], exitCode: 0, summary: `✅ 队列已清空：${sequence.length} 个任务全部完成${doneReportNotice(cfg, sequence, state, queue.batches, opts.batch, { noReport: opts.noReport, forceReport: opts.forceReport })}` };
   }
 
   const prompts = taken.map((t) => {
     const deps = t.spec.dependsOn.map((d) => fullById.get(d)).filter((d): d is ExecutableTask => !!d);
-    return buildTaskPrompt(t, cfg.metaDir, cfg.projectRoot, deps.length ? { deps, state } : undefined);
+    const dependents = [...fullById.values()].filter((e) => e.spec.dependsOn.includes(t.spec.id));
+    const suspected = detectSuspectedUpstreams(t, [...fullById.values()]);
+    return buildTaskPrompt(t, cfg.metaDir, cfg.projectRoot, deps.length || dependents.length || suspected.length ? { deps, state, dependents, suspected } : undefined);
   });
   // 批内全部占位 doing：串行执行整批，done 逐个销账（中断 24 小时后自动重拾）
   taken.forEach((t) => markTaskState(cfg, t.spec.id, 'doing'));
@@ -485,12 +580,14 @@ export function batchRelay(cfg: TaskQConfig, opts: { batch?: string; batchSize?:
     `按顺序执行：每个完成即 \`taskq done <id> --verdict "..."\`；批内全部完成后再次 \`taskq execute\` 取下一批，直到退出码 0`,
   ];
   if (stop) lines.push(`⛔ 批后拦停（下一批处理）：${stop}`);
-  return { tasks: taken, prompts, exitCode: 10, summary: lines.join('\n'), stopReason: stop };
+  return { tasks: taken, prompts, exitCode: 10, summary: lines.join('\n'), stopReason: stop, planBrief };
 }
 
 /** 渲染批次接力输出：批摘要 + 逐任务 [TASKQ_PROMPT] 块 + 执行约定 */
 export function renderBatchResult(r: BatchRelayResult): string {
-  const lines: string[] = [r.summary, ''];
+  const lines: string[] = [];
+  if (r.planBrief) lines.push(r.planBrief, '');
+  lines.push(r.summary, '');
   r.tasks.forEach((t, i) => {
     lines.push(`───── 批次任务 ${i + 1}/${r.tasks.length}：${t.spec.id} ─────`);
     lines.push('');

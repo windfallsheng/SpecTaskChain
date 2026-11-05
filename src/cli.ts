@@ -20,6 +20,7 @@ import { listCommand } from './commands/list';
 import { askCommand } from './commands/ask';
 import { splitCommand } from './commands/split';
 import { pipelineCommand } from './commands/pipeline';
+import { planCommand, resolvePlans, planBeforeExecute } from './commands/plan';
 
 const VERSION = readVersion();
 
@@ -38,7 +39,7 @@ function main(): void {
   const hasFlag = (name: string): boolean => rest.includes(name);
   // 有值旗标：其后一个元素是值，不属于位置参数；布尔旗标（--auto/--skip-draft/--draft 等）不吞后邻元素
   // （否则 `run clarify --batch-size 4` 的 4 会漏进位置参数被当成 split 素材）
-  const VALUE_FLAGS = ['--name', '--type', '--group', '--priority', '--tags', '--estimate', '--due', '--role', '--batch', '--task', '--module', '--batch-size', '--file', '--verdict', '--spent', '--tools', '--status'];
+  const VALUE_FLAGS = ['--name', '--type', '--group', '--priority', '--tags', '--estimate', '--due', '--role', '--batch', '--task', '--module', '--batch-size', '--file', '--verdict', '--spent', '--tools', '--status', '--plans', '--tasks', '--format', '--show'];
   const positionalArgs = (arr: string[]): string[] =>
     arr.filter((a, i) => !a.startsWith('--') && !(i > 0 && VALUE_FLAGS.includes(arr[i - 1])));
 
@@ -67,6 +68,7 @@ function main(): void {
           tags: flag('--tags')?.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
           estimate: est !== undefined && !isNaN(est) ? est : undefined,
           due: flag('--due'),
+          dependsOn: flag('--depends-on')?.split(/[,，]/).map((x) => x.trim()).filter(Boolean),
           role: flag('--role'),
         });
         // 英译接力请求（[TASKQ_PROMPT]）无论 --draft 都 exit 10；否则不带 --draft 时请求宿主 AI 接力生成规格草案（与 split 同协议）
@@ -101,7 +103,7 @@ function main(): void {
           const range = parseRunRange(positional);
           if (!range) {
             // 位置参数非空但解析不出阶段：明确报错，绝不静默退化成智能续跑（防误触发接力）
-            output = '❌ 无法识别 run 阶段参数：' + positional.join(' ') + '\n\n可用阶段：clarify（体检/澄清）/ split（拆分/拆）/ execute（执行/接力/跑）/ report（报告/复盘）\n\n示例：\n  taskq run clarify\n  taskq run clarify to execute\n  taskq run split docs/prd.md --auto\n  taskq run            # 无参 = 智能续跑';
+            output = '❌ 无法识别 run 阶段参数：' + positional.join(' ') + '\n\n可用阶段：clarify（体检/澄清）/ split（拆分/拆）/ plan（列计划/计划）/ execute（执行/接力/跑）/ report（报告/复盘）\n\n示例：\n  taskq run clarify\n  taskq run clarify to execute\n  taskq run split docs/prd.md --auto\n  taskq run            # 无参 = 智能续跑';
             break;
           }
           if (range.from) {
@@ -118,7 +120,19 @@ function main(): void {
           }
         }
         // 退出码协议：0 队列清空 / 10 接力（宿主 AI 执行）/ 12 拦截（draft/模块缺共享 spec/doing 进行中/failed 需人工介入）——直接传播给宿主
-        const result = relayNext(cfg, { skipDraft: hasFlag('--skip-draft'), batch: flag('--batch'), task: flag('--task'), module: flag('--module'), noReport: hasFlag('--no-report'), forceReport: hasFlag('--report') });
+        const plansRaw = flag('--plans');
+        let planTaskIds: string[] | undefined;
+        if (plansRaw) {
+          const names = plansRaw.split(/[,，]/).map((x) => x.trim()).filter(Boolean);
+          const r = resolvePlans(cfg, flag('--batch'), names);
+          if (r.missing.length) {
+            output = `❌ 计划不存在：${r.missing.join('、')}。taskq plan --list 看现有计划。`;
+            process.exitCode = 12;
+            break;
+          }
+          planTaskIds = r.taskIds;
+        }
+        const result = relayNext(cfg, { skipDraft: hasFlag('--skip-draft'), batch: flag('--batch'), task: flag('--task'), module: flag('--module'), taskIds: planTaskIds, noReport: hasFlag('--no-report'), forceReport: hasFlag('--report') });
         output = renderRunPanel(cfg, { batch: flag('--batch') }) + '\n\n' + renderRunResult(result);
         process.exitCode = result.exitCode;
         break;
@@ -128,9 +142,41 @@ function main(): void {
         const sizeRaw = flag('--batch-size');
         const size = sizeRaw !== undefined ? Number(sizeRaw) : undefined;
         // batchSize 只传「显式提供」的值；未提供传 undefined → batchRelay 内部走批次配置（BATCH.yaml）→ 系统默认的优先级链
-        const result = batchRelay(cfg, { batch: flag('--batch'), batchSize: size !== undefined && !isNaN(size) ? size : undefined, skipDraft: hasFlag('--skip-draft'), task: flag('--task'), module: flag('--module'), noReport: hasFlag('--no-report'), forceReport: hasFlag('--report') });
-        output = renderBatchResult(result);
+        const plansRaw = flag('--plans');
+        let planTaskIds: string[] | undefined;
+        if (plansRaw) {
+          const names = plansRaw.split(/[,，]/).map((x) => x.trim()).filter(Boolean);
+          const r = resolvePlans(cfg, flag('--batch'), names);
+          if (r.missing.length) {
+            output = `❌ 计划不存在：${r.missing.join('、')}。taskq plan --list 看现有计划。`;
+            process.exitCode = 12;
+            break;
+          }
+          planTaskIds = r.taskIds;
+        }
+        // 先谋后动：批量执行前默认落全景计划（定向执行或 --no-plan 跳过）；已有计划则沿用并按计划圈定任务集执行
+        const planRitual = planBeforeExecute(cfg, flag('--batch'), { noPlan: hasFlag('--no-plan'), directed: Boolean(flag('--task') || flag('--module') || flag('--plans')), replan: hasFlag('--replan') });
+        const result = batchRelay(cfg, { batch: flag('--batch'), batchSize: size !== undefined && !isNaN(size) ? size : undefined, skipDraft: hasFlag('--skip-draft'), task: flag('--task'), module: flag('--module'), taskIds: planTaskIds || planRitual.planTaskIds, noReport: hasFlag('--no-report'), forceReport: hasFlag('--report') });
+        output = (planRitual.text ? planRitual.text + '\n\n' : '') + renderBatchResult(result);
         process.exitCode = result.exitCode;
+        break;
+      }
+      case 'plan': {
+        // 执行计划：依赖拓扑顺序显性化——全景 / 命名计划（--name，可被 --plans 引用执行）/ 范围圈定（--tasks/--module）
+        // 落盘形态：--format md|html|none 覆盖批次配置 plan-format（md 底稿 / html 伴生页 / none 只终端）
+        const tasksRaw = flag('--tasks');
+        const moduleRaw = flag('--module');
+        output = planCommand(cfg, {
+          batch: flag('--batch'),
+          noSave: hasFlag('--no-save'),
+          brief: hasFlag('--brief'),
+          name: flag('--name'),
+          tasks: tasksRaw ? tasksRaw.split(/[,，]/).map((x) => x.trim()).filter(Boolean) : undefined,
+          modules: moduleRaw ? moduleRaw.split(/[,，]/).map((x) => x.trim()).filter(Boolean) : undefined,
+          list: hasFlag('--list'),
+          show: flag('--show'),
+          format: flag('--format'),
+        });
         break;
       }
       case 'pipeline': {

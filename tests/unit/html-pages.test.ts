@@ -1,4 +1,4 @@
-// 报告类 HTML 页面测试：CLARIFY.html（体检三档分组）+ REPORT.html（复盘状态分布）
+// 报告类 HTML 页面测试：CLARIFY.html（体检四档分组）+ REPORT.html（复盘状态分布）
 import { describe, it, expect } from 'vitest';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -11,7 +11,7 @@ import { newCommand } from '../../src/commands/new';
 
 const cfg = (root: string) => ({ projectRoot: root, queueDir: join(root, 'queue'), metaDir: join(root, 'queue', '.taskchain') });
 
-describe('CLARIFY.html：体检三档红黄灰分组', () => {
+describe('CLARIFY.html：体检四档红黄灰靛分组', () => {
   const issues: ClarifyIssue[] = [
     { level: 'blocking', taskId: '01-a', message: '缺少必填项 output（三必填：goal/output/acceptance）' },
     { level: 'suggest', taskId: '02-b', message: '目标/正文含模糊词「做好」——不可验收' },

@@ -123,7 +123,7 @@ footer{margin-top:36px;padding-top:14px;border-top:1px solid #e2e8f0;color:#94a3
 
 <h2>可视化页面（都长在 queue/ 下，双击即看）</h2>
 <div class="zone">
-  <p>四扇门户同住 <b>queue/reports/</b>：<b>GUIDE.html</b> 进门（本页，init 自动生成）· <b>PANEL.html</b> 现状（<b>status --panel</b>）· <b>CLARIFY.html</b> 问题（<b>clarify --html</b> 体检三档分组）· <b>REPORT.html</b> 复盘（<b>report --html</b> 状态分布 + 失败红卡）——随对应命令刷新，与终端输出同源。</p>
+  <p>四扇门户同住 <b>queue/reports/</b>：<b>GUIDE.html</b> 进门（本页，init 自动生成）· <b>dashboard-{批次}.html</b> 看板（<b>status --panel</b> 五态统计卡 + 类型分布 + 工时对账 + 优先级/逾期，按批次落盘可并存；<b>PANEL.html</b> 是最新批次快捷入口）· <b>CLARIFY.html</b> 问题（<b>clarify --html</b> 体检四档分组）· <b>REPORT.html</b> 复盘（<b>report --html</b> 状态分布 + 失败红卡）——随对应命令刷新，与终端输出同源。</p>
 </div>
 
 <h2>常见问题</h2>

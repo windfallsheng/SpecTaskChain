@@ -28,6 +28,10 @@ export function doneCommand(cfg: TaskQConfig, opts: DoneOptions): string {
   if (task.draft) {
     return `⛔ 任务「${task.id}」还是 draft 态（规格未补全，验收门禁空跑无意义）。先补全规格：taskq clarify ${task.id}（或 taskq fix ${task.id} 摘 draft），再验收。`;
   }
+  // 评审门禁启用时回执不可缺：review 有内容而宿主 AI 没传 --verdict，属协议违规——拦（可靠执行：回执是协议的一部分，缺了不算完）
+  if (task.acceptance.review.trim() && !(opts.verdict || '').trim()) {
+    return `⛔ 评审门禁已启用（「${task.acceptance.review.trim().slice(0, 60)}」）但未传 --verdict。评审结论是验收回执的一部分，机器不能替你放行：taskq done ${task.id} --verdict "pass|fail + 评审结论"`;
+  }
   // 验收门禁基准 = 项目根（output 是用户视角路径，AI 也在项目根干活）
   const result = runAcceptance(task.acceptance, cfg.projectRoot, opts.verdict);
   const rendered = renderAcceptanceResult(result);
@@ -46,7 +50,7 @@ export function doneCommand(cfg: TaskQConfig, opts: DoneOptions): string {
   if (attempts >= maxAttempts) {
     markTaskState(cfg, task.id, 'failed'); // 达上限：机器判定优先，不写 AI 评审文本（防 status=failed + verdict=pass 矛盾）
     appendOpLog(cfg, { cmd: 'done', target: task.id, batch: batchId, note: `验收未通过（达上限 ${maxAttempts} 次），标记 failed` });
-    return `${rendered}\n\n⛔ 已达尝试上限（${maxAttempts} 次），任务标记 failed 停止接力。人工介入：修好规格/产出后重试 \`taskq done ${task.id} --verdict "..."\` 重新验收；如需整单重跑，手动把 queue/.taskchain/state.json 中该任务状态改为 todo。`;
+    return `${rendered}\n\n⛔ 已达尝试上限（${maxAttempts} 次），任务标记 failed 停止接力。人工介入：修好规格/产出后重试 \`taskq done ${task.id} --verdict "..."\` 重新验收；如需整单重跑，\`taskq reset ${task.id}\` 复位。`;
   }
   // 未达上限：回 todo 可重试（接力能再次领取），不标 failed——failed 只属于达上限
   markTaskState(cfg, task.id, 'todo');

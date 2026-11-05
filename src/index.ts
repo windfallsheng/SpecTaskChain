@@ -5,11 +5,14 @@ export { TaskSpec, AcceptanceSpec, ArtifactRule, validateRequired, parseFrontmat
 export { resolveTaskType, TaskTypeDefinition, listBuiltinTypes } from './core/task-type';
 export { resolveTaskRole, resolveEffectiveRole, defaultRoleForType, renderRoleSegment, renderEffectiveRoleSegment, listBuiltinRoles, TaskRoleDefinition, EffectiveRole } from './core/task-role';
 export { resolveSpecTemplate, templateSourceLabel, SpecTemplate } from './core/task-template';
-export { detectTaskIssues, detectDanglingDeps, detectOutputConflicts, detectModuleIssues, detectDuplicateNames, detectRoleConflicts, renderClarifyReport, ClarifyIssue } from './core/clarify';
+export { extractStatedPaths, defaultOutputFor, type OutputLocOptions } from './core/output-location';
+export { detectTaskIssues, detectDanglingDeps, detectOutputConflicts, detectModuleIssues, detectDuplicateNames, detectRoleConflicts, detectImplicitDeps, renderClarifyReport, ClarifyIssue } from './core/clarify';
+export { buildPlanModel, renderPlan, renderPlanBrief, renderPlanHtml, renderPlanFrontmatter, parsePlanFrontmatter, listPlanSummaries, resolvePlanTaskIds, planSlug, PlanModel, PlanEntry, PlanFrontmatter, PlanSummary } from './core/plan';
+export { planCommand, resolvePlans, PlanOptions } from './commands/plan';
 export { toSlug, hasCJK, isPlaceholderSlug, hasNonAscii } from './core/task-naming';
 export { extractReferences, resolveReferences, Reference, ResolvedReference } from './core/references';
 export { runAcceptance, renderAcceptanceResult, AcceptanceResult } from './core/acceptance';
-export { relayNext, buildTaskPrompt, batchRelay, renderBatchResult, markTaskState, queueSummary, MAX_ATTEMPTS, NextTaskInfo, BatchRelayResult } from './core/runner';
+export { relayNext, buildTaskPrompt, batchRelay, renderBatchResult, markTaskState, queueSummary, MAX_ATTEMPTS, NextTaskInfo, BatchRelayResult, detectSuspectedUpstreams, SuspectedUpstream } from './core/runner';
 export { generateQueueReport, ReportOptions } from './core/report';
 export { generatePanelHtml } from './core/panel';
 export { recognizeIntent, IntentResult } from './core/intent';

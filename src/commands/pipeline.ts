@@ -1,5 +1,5 @@
 // taskq pipeline：端到端流水线剧本——素材进（描述/文件/目录），任务出，执行完，账可查
-// 五个阶段：采集（CLI 确定性完成）→ 拆分（宿主 AI）→ 澄清（用户点头）→ 执行（宿主 AI 接力）→ 收尾（复盘）
+// 六阶段：采集（CLI 确定性完成）→ 拆分（宿主 AI）→ 澄清（用户点头）→ 列计划（先谋后动）→ 执行（宿主 AI 接力）→ 收尾（复盘）
 // CLI 只出剧本 + 采集素材，编排执行归宿主 AI（对齐 spec-once：宿主单会话按剧本调用现有命令，各阶段拦停点由宿主停下问人）
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { isAbsolute, join, resolve } from 'path';
@@ -110,15 +110,23 @@ export function pipelineCommand(cfg: TaskQConfig, input: string, opts: PipelineO
   lines.push('');
   lines.push(`**拦停点 2**：clarify 非全绿不得进阶段 3——「怎么算做完」没定，无人值守就跑不起来。${auto ? '非交互模式：机械项直接 taskq fix --yes 应用，验收三态按拆分意图代拟后标注「待用户复核」，全绿即通过' : ''}`);
   lines.push('');
-  lines.push(`## 阶段 3：执行（宿主 AI 接力，批次自动）`);
+  lines.push('## 阶段 3：列计划（先谋后动，确定性一步）');
+  lines.push('');
+  lines.push('- 运行 `taskq plan` 落全景执行计划（顺序/依赖边/关键路径，落批次 overview/PLAN.md，形态走批次 plan-format 配置）');
+  lines.push('- 要圈定范围：`taskq plan --name "计划名" --tasks a,b` 出命名计划，执行时 `taskq execute --plans 计划名` 按计划接力');
+  lines.push('- 计划是执行依据不是拦停点——生成即可进阶段 4（用户想审可停下给看）');
+  lines.push('- 计划一旦落盘即被阶段 4 沿用：execute 检测到已有计划直接按计划执行，不会重复列（任务增减后要刷新用 `taskq execute --replan` 重列）');
+  lines.push('');
+  lines.push('## 阶段 4：执行（宿主 AI 接力，批次自动）');
   lines.push('');
   lines.push(`- 运行 \`taskq execute --batch-size ${batchSize}\` 领取一批任务（输出批内每个任务的完整 prompt）`);
+  lines.push('- 计划衔接：阶段 3 未圈定范围 → execute 沿用全景计划直接接力；阶段 3 命名了计划 → `taskq execute --plans 计划名` 只跑计划圈定的任务');
   lines.push('- 按顺序执行：每个完成即 `taskq done <id> --verdict "..."`，批内全部完成后再次 `taskq execute` 取下一批，直到退出码 0');
   lines.push('- 批内任一任务 failed（3 次验收不过）即停下，处理后从 execute 重新进入');
   lines.push('');
   lines.push('**拦停点 3**：任务失败需人工介入——机器不假装能自动修复，把问题亮给用户。（两种模式都停，永不自动通过）');
   lines.push('');
-  lines.push('## 阶段 4：收尾（复盘）');
+  lines.push('## 阶段 5：收尾（复盘）');
   lines.push('');
   lines.push('- 运行 `taskq report` 输出队列报告（执行留痕，有账可查），交给用户');
   lines.push('');

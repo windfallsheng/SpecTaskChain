@@ -8,6 +8,7 @@ import { relayNext, NextTaskInfo, queueSummary } from '../core/runner';
 export interface RunOptions {
   skipDraft?: boolean; // 强跑 draft 任务
   batch?: string;      // 批次聚焦（batch-NNN / tasks / all；缺省 = 最新批次）
+  taskIds?: string[];  // --plans 计划圈定的任务集（并集）
 }
 
 // ========== 阶段表（run 流水线的推进域）==========
@@ -39,12 +40,21 @@ const PHASES: RunPhase[] = [
     explanation: '素材（文档/目录/纯文字/截图）拆成任务草案（单独任务 + 模块级任务）；拆分清单给用户确认',
   },
   {
+    // 先谋后动：任务拆好、规格澄清后，执行前默认列计划（全景拓扑 + 关键路径落 批次 overview/PLAN.md，形态走批次 plan-format 配置）
+    id: 'plan',
+    aliases: ['plan', '计划', '列计划', '排计划'],
+    label: '列计划',
+    command: 'taskq plan',
+    gate: false,
+    explanation: 'taskq plan 落全景执行计划（顺序/依赖边/关键路径）；要圈定范围加 --name/--tasks/--module，只看不落盘加 --no-save；生成失败不阻断执行',
+  },
+  {
     id: 'execute',
     aliases: ['execute', '执行', '接力', '跑'],
     label: '接力执行',
     command: 'taskq execute',
     gate: false,
-    explanation: 'taskq execute 批量接力，宿主 AI 循环续跑直到队列清空（退出码 0）；批内每个任务完成即 taskq done <id> --verdict "..." 登记验收',
+    explanation: 'taskq execute 批量接力，宿主 AI 循环续跑直到队列清空（退出码 0）；批内每个任务完成即 taskq done <id> --verdict "..." 登记验收；已有计划自动沿用（--replan 重列），--plans 按命名计划执行',
   },
   {
     id: 'report',
@@ -162,5 +172,5 @@ export function renderRunResult(result: NextTaskInfo): string {
 }
 
 export function runCommand(cfg: TaskQConfig, opts: RunOptions): string {
-  return renderRunResult(relayNext(cfg, { skipDraft: opts.skipDraft, batch: opts.batch }));
+  return renderRunResult(relayNext(cfg, { skipDraft: opts.skipDraft, batch: opts.batch, taskIds: opts.taskIds }));
 }

@@ -275,6 +275,69 @@ describe('面板：HTML 转义防注入', () => {
   });
 });
 
+describe('面板：批次看板维度（五态卡/类型分布/工时对账/优先级/逾期/批次聚焦）', () => {
+  function board() {
+    const cfg = makeCfg();
+    const mk = (id: string, extra: Record<string, unknown>, body = '') => {
+      const dir = join(cfg.queueDir, 'batch-001', id);
+      mkdirSync(dir, { recursive: true });
+      const lines = [`goal: ${id}目标`, 'output: o/', 'acceptance:', '  review: r'];
+      for (const [k, v] of Object.entries(extra)) lines.unshift(`${k}: ${v}`);
+      writeFileSync(join(dir, 'SPEC.md'), `---\n${lines.join('\n')}\n---\n${body}`, 'utf-8');
+    };
+    mk('task-a', { type: 'doc', estimate: 4 });
+    mk('task-b', { type: 'doc', estimate: 2, priority: 'P0', due: '2001-01-01' });
+    mk('task-c', { type: 'feature', estimate: 8, priority: 'P1' });
+    return cfg;
+  }
+  it('五态统计卡 + 类型分布 + 工时对账', () => {
+    const cfg = board();
+    const html = readFileSync(generatePanelHtml(cfg), 'utf-8');
+    expect(html).toContain('总任务');
+    expect(html).toContain('任务类型分布');
+    expect(html).toContain('>doc<'); // 类型卡聚合
+    expect(html).toContain('>feature<');
+    expect(html).toContain('工时对账');
+    expect(html).toContain('预估合计 <b>14h</b>');
+  });
+  it('优先级分布与逾期红标', () => {
+    const cfg = board();
+    const html = readFileSync(generatePanelHtml(cfg), 'utf-8');
+    expect(html).toContain('优先级分布');
+    expect(html).toContain('P0 × 1');
+    expect(html).toContain('P1 × 1');
+    expect(html).toContain('overdue'); // due 2001 已逾期
+  });
+  it('批次聚焦：--batch 只渲染该批次（标题带批次名）', () => {
+    const cfg = board();
+    const dir = join(cfg.queueDir, 'batch-002', 'task-z');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SPEC.md'), '---\ngoal: z目标\noutput: o/\nacceptance:\n  review: r\n---\n', 'utf-8');
+    const focused = readFileSync(generatePanelHtml(cfg, 'batch-001'), 'utf-8');
+    expect(focused).toContain('批次 <b>batch-001</b>');
+    expect(focused).toContain('task-a');
+    expect(focused).not.toContain('task-z');
+    const all = readFileSync(generatePanelHtml(cfg, 'all'), 'utf-8');
+    expect(all).toContain('task-z');
+  });
+  it('看板文件名规则：dashboard-{批次}.html 按批次落盘可并存；PANEL.html 为最新批次快捷入口', () => {
+    const cfg = board();
+    // 显式 --batch：按批次命名
+    expect(generatePanelHtml(cfg, 'batch-001')).toMatch(/dashboard-batch-001\.html$/);
+    expect(generatePanelHtml(cfg, 'all')).toMatch(/dashboard-all\.html$/);
+    // 缺省：最新批次（batch-002 后建为最新）+ 同步刷新 PANEL.html 快捷入口
+    const dir = join(cfg.queueDir, 'batch-002', 'task-z');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SPEC.md'), '---\ngoal: z目标\noutput: o/\nacceptance:\n  review: r\n---\n', 'utf-8');
+    const latest = generatePanelHtml(cfg);
+    expect(latest).toMatch(/dashboard-batch-002\.html$/);
+    const entry = join(cfg.queueDir, 'reports', 'PANEL.html');
+    const entryHtml = readFileSync(entry, 'utf-8');
+    expect(entryHtml).toContain('dashboard-batch-002.html');
+    expect(entryHtml).toContain('http-equiv="refresh"');
+  });
+});
+
 describe('版本事实源与 init 工具参数', () => {
   it('readVersion 与 package.json 一致（唯一事实源）', () => {
     const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8'));
@@ -499,11 +562,11 @@ describe('0.2.5：定向执行 + 重跑复位 + SKILL 矩阵', () => {
     expect(resetCommand(cfg, '99-none')).toContain('找不到');
   });
 
-  it('init --tools qoder 生成 5 个 SKILL：1 总入口 + 4 高频专属（下拉矩阵）', () => {
+  it('init --tools qoder 生成 6 个 SKILL：1 总入口 + 5 高频专属（含 taskq-plan）', () => {
     const root = makeCfg().projectRoot;
     initCommand(root, { tools: ['qoder'] });
     const base = join(root, '.agents', 'skills');
-    for (const name of ['taskq-ask', 'taskq-new', 'taskq-run', 'taskq-clarify', 'taskq-done']) {
+    for (const name of ['taskq-ask', 'taskq-new', 'taskq-run', 'taskq-plan', 'taskq-clarify', 'taskq-done']) {
       expect(existsSync(join(base, name, 'SKILL.md'))).toBe(true);
     }
     const sub = readFileSync(join(base, 'taskq-run', 'SKILL.md'), 'utf-8');
@@ -515,8 +578,14 @@ describe('0.2.5：定向执行 + 重跑复位 + SKILL 矩阵', () => {
     expect(sub).toContain('taskq reset --all --hard');
     expect(sub).toContain('重跑三态');
     const main = readFileSync(join(base, 'taskq-ask', 'SKILL.md'), 'utf-8');
-    expect(main).toContain('/taskq-new /taskq-run /taskq-clarify /taskq-done');
+    expect(main).toContain('/taskq-new /taskq-run /taskq-plan /taskq-clarify /taskq-done');
     expect(main).toContain('taskq reset');
+    // 计划 SKILL 语义齐备：先谋后动 / --plans 按计划执行 / 命名计划
+    const plan = readFileSync(join(base, 'taskq-plan', 'SKILL.md'), 'utf-8');
+    expect(plan).toContain('name: taskq-plan');
+    expect(plan).toContain('先谋后动');
+    expect(plan).toContain('--plans');
+    expect(plan).toContain('--replan');
   });
 
   it('init --tools windsurf 不生成 SKILL（无 skill 约定，规则照常）', () => {

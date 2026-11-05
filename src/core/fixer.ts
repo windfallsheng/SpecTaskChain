@@ -12,6 +12,7 @@ import type { TaskSpec } from './task-spec';
 import type { TaskTypeDefinition } from './task-type';
 import { defaultRoleForType } from './task-role';
 import { slugFromDir } from './task-naming';
+import { extractStatedPaths, defaultOutputFor, type OutputLocOptions } from './output-location';
 
 /** 修复项：kind 决定行级编辑方式，after 是完整的前端块/行（预览与落盘共用） */
 export interface FixItem {
@@ -22,15 +23,13 @@ export interface FixItem {
   after: string;       // 将写入的内容（行级编辑按 kind 应用）
 }
 
-/** 按类型推断产出路径：{outputDir}{slug}.md；代码类型/data 不猜（扩展名不可断定） */
-export function inferOutputPath(spec: TaskSpec, typeDef: TaskTypeDefinition): string {
-  if (typeDef.code || typeDef.name === 'data') return '';
-  const slug = slugFromDir(spec.id) || spec.id;
-  return `${typeDef.outputDir}${slug}.md`;
+/** 按类型推断产出路径：委托 defaultOutputFor（批次覆盖 + 归巢同源）；代码类型/data 不猜（扩展名不可断定） */
+export function inferOutputPath(spec: TaskSpec, typeDef: TaskTypeDefinition, opts?: OutputLocOptions): string {
+  return defaultOutputFor(spec, typeDef, opts);
 }
 
-/** 计算单任务的 A 档修复项（纯函数，不落盘） */
-export function computeFixes(spec: TaskSpec, typeDef: TaskTypeDefinition): FixItem[] {
+/** 计算单任务的 A 档修复项（纯函数，不落盘）；opts 透传给产出推断（批次产出目录覆盖 + 归巢） */
+export function computeFixes(spec: TaskSpec, typeDef: TaskTypeDefinition, opts?: OutputLocOptions): FixItem[] {
   const items: FixItem[] = [];
 
   // role：类型映射专职角色；generalist 是通才兜底，不写（保留 AI 自动选择）
@@ -47,16 +46,19 @@ export function computeFixes(spec: TaskSpec, typeDef: TaskTypeDefinition): FixIt
     }
   }
 
-  // output：空 → 按类型推断；推断不出（代码/数据类型）留给宿主 AI
+  // output：空 → 用户指定优先（描述里明确指出的产出路径直接用）→ 按类型推断；都推断不出（代码/数据类型）留给宿主 AI
   let effectiveOutput = (spec.output || '').trim();
   if (!effectiveOutput) {
-    const inferred = inferOutputPath(spec, typeDef);
+    const stated = extractStatedPaths(`${spec.goal}\n${spec.body}`)[0] || '';
+    const inferred = stated || inferOutputPath(spec, typeDef, opts);
     if (inferred) {
       effectiveOutput = inferred;
       items.push({
         taskId: spec.id,
         kind: 'output',
-        description: `补 output: ${inferred}（按类型 ${typeDef.name} 输出目录推断）`,
+        description: stated
+          ? `补 output: ${inferred}（按任务描述指出的产出位置）`
+          : `补 output: ${inferred}（按类型 ${typeDef.name} 输出目录推断）`,
         before: 'output: （空）',
         after: `output: ${inferred}`,
       });

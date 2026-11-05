@@ -229,11 +229,13 @@ export function buildExecutionSequence(queue: QueueScan): ExecutableTask[] {
   return sorted;
 }
 
-/** 定向筛选：--task 单任务 / --module 模块全部子任务；都不传返回原序列 */
-export function filterExecutionSequence(sequence: ExecutableTask[], opts: { task?: string; module?: string }): ExecutableTask[] {
-  if (opts.task) return sequence.filter((e) => e.spec.id === opts.task);
-  if (opts.module) return sequence.filter((e) => e.module?.id === opts.module);
-  return sequence;
+/** 定向筛选：--task 单任务 / --module 模块全部子任务 / --plans 计划任务集（并集）；都不传返回原序列 */
+export function filterExecutionSequence(sequence: ExecutableTask[], opts: { task?: string; module?: string; taskIds?: string[] }): ExecutableTask[] {
+  const ids = opts.taskIds && opts.taskIds.length ? new Set(opts.taskIds) : undefined;
+  if (!opts.task && !opts.module && !ids) return sequence;
+  return sequence.filter(
+    (e) => (opts.task ? e.spec.id === opts.task : false) || (opts.module ? e.module?.id === opts.module : false) || (ids ? ids.has(e.spec.id) : false),
+  );
 }
 
 /** doing 占位超过该时长视为孤儿任务（执行者已中断），允许重拾 */

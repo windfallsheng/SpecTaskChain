@@ -24,6 +24,11 @@ describe('detectOrchestration：复合意图编排（多动作词 + 时序词 �
     expect(orch!.steps.map((s) => s.intent)).toEqual(['clarify', 'execute']);
   });
 
+  it('「先列计划再执行」→ plan → execute 两步编排（列计划是编排步骤）', () => {
+    const o = detectOrchestration('先列计划再执行');
+    expect(o).not.toBeNull();
+    expect(o!.steps.map((x) => x.intent)).toEqual(['plan', 'execute']);
+  });
   it('「拆分→澄清→执行」三段编排（语序 = 执行序）', () => {
     const orch = detectOrchestration('拆分 docs/prd.md，然后澄清，最后执行');
     expect(orch!.steps.map((s) => s.intent)).toEqual(['split', 'clarify', 'execute']);
@@ -101,6 +106,12 @@ describe('parseRunRange：run 位置参数解析（preset / 范围 / 素材）',
     expect(parseRunRange(['split', 'docs/prd.md'])).toEqual({ from: 'split', material: 'docs/prd.md' });
   });
 
+  it('plan 单阶段：plan / 中文别名「列计划」「计划」', () => {
+    expect(parseRunRange(['plan'])).toEqual({ from: 'plan' });
+    expect(parseRunRange(['列计划'])).toEqual({ from: 'plan' });
+    expect(parseRunRange(['计划'])).toEqual({ from: 'plan' });
+  });
+
   it('未知词 → null（cli 层据此明确报错，不静默续跑）', () => {
     expect(parseRunRange(['胡说八道'])).toBeNull();
   });
@@ -112,15 +123,17 @@ describe('renderRunPlan：流水线剧本（拦停点 + 模式 + NEEDS_INFO）',
     expect(out).toContain('[TASKQ_RUN_PLAN]');
     expect(out).toContain('体检澄清');
     expect(out).toContain('拆分任务');
+    expect(out).toContain('列计划');
     expect(out).toContain('接力执行');
     expect(out).toContain('报告复盘');
-    expect(out).toContain('阶段 1/4');
+    expect(out).toContain('阶段 1/5');
   });
 
   it('范围：clarify to execute 含中间阶段 split（共三步）', () => {
     const out = renderRunPlan(cfg, { from: 'clarify', to: 'execute' });
-    expect(out).toContain('阶段 1/3');
+    expect(out).toContain('阶段 1/4');
     expect(out).toContain('拆分任务');
+    expect(out).toContain('列计划');
     expect(out).not.toContain('报告复盘');
   });
 

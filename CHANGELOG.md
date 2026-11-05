@@ -1,5 +1,135 @@
 # CHANGELOG
 
+**全面检查第二波：SKILL 模板源补齐 taskq-plan + 口径统一（不是抽检，是同类全实例扫描）**：
+
+- **病灶①模板源缺 taskq-plan**：此前 examples 里的 taskq-plan/taskq-run v0.2.37 是直改产物，CLI 模板源（init.ts renderSkillFiles）只有 5 个 SKILL——任何新项目 `taskq init` 都不会生成计划 SKILL，且旧 taskq-run 模板无「先谋后动/--plans/--replan」语义。修复：模板源新增 taskq-plan 子模板（全景/命名计划、--list/--show、--plans 按计划执行、先谋后动沿用与 --replan 语义、frontmatter tasks 机读锚点、plan-format 三形态、失败降级一行警告），taskq-run 模板补齐计划语义与计划外待办提示；examples 产物经 `taskq init --update` 从模板源重生成，漂移消除
+- **病灶②clarify 三档残留**：CLARIFY.html 渲染器早已四档（⛔⚠️⏳🤖），但 clarify.ts/help.ts/guide.ts 注释与 html-pages.test.ts 名称仍写「三档红黄灰」——统一为「四档红黄灰靛」
+- **病灶③help 计数滞后**：init 说明「5 个 SKILL」→「6 个 SKILL」（+ /taskq-plan），help.test/fixes.test 断言同步（fixes.test 新增 plan SKILL 语义断言：先谋后动/--plans/--replan）
+- 真机闭环：全新 init 生成 6 SKILL → execute 首列计划落盘 → 新增任务被圈定集挡门外 → 圈定任务完成后「计划外待办 --replan」提示 → --replan 重列纳入 → 483 测试三轮全绿
+
+**可靠执行全链路体检：四处协议旁门关闭 + 一处断言毫秒赌博根治**：
+
+- **隐患①协议旁门关闭**：runner.ts 三处 + done.ts 一处拦截文案引导「手动把 state.json 中该任务状态改为 todo」——违反状态只归 CLI 原则，全部改为引导 `taskq reset <id>` 复位（走 CLI 状态机，attempts 计数与留痕不旁落）
+- **隐患②文案口径对齐**：batchRelay failed 拦停文案不区分「达上限/未达上限」（实际未达上限也报达上限），改为与 relayNext 同构的三元判断
+- **隐患③评审门禁补漏**：review 启用而宿主 AI 忘传 --verdict 时评审门禁静默放行（verdictPassed 空串即通过）——done 入口加拦截：评审门禁启用时回执不可缺，机器不替 AI 放行
+- **测试断言毫秒赌博根治**：plan.test 用例 `not.toContain('3.')` 撞时间戳毫秒位（53.9xx 过、53.3xx 挂）——此前误判为「并发环境偶发」，实为断言依赖 createdAt 随机毫秒；改为断言任务 goal 不入计划
+- 体检通过项：状态写入收敛（writeState 仅 runner 持有，reset 为唯一旁路且确定性复位）；两入口 [TASKQ_PROMPT] 块同构且带回执约定；fixer 仅四类机械修复项；新任务英译接力零痕迹拦截幂等续跑；ask 编排候选清单幂等可解；语义活（拆分/澄清/英译/评审结论）均有确定性兜底
+
+**ask 口语入口对新功能点全面补齐（意图识别 + 参数提取 + 编排）**：
+
+- **「按计划执行/执行计划/跑计划」→ run 的 --plans 语义**（此前误入 plan 意图只列不跑，彻底断链）：plan 意图触发器移除「执行计划」，run 意图新增按计划三词；「按计划执行 A,B」提取 planNames 名单（整体匹配防「按计划」吞「执行」进捕获组），run/execute 两入口 resolvePlans 解析任务集，缺计划报错 exit 12 不瞎猜
+- **「重列计划/重新列计划」→ plan**：覆盖重列天然即 --replan 语义
+- **「看板/面板/dashboard」→ status 生成 HTML 看板**：status 意图新增看板词，ask status case 检测看板词自动开 panel（dashboard-{批次}.html）
+- **「先列计划再执行」→ 编排含 plan 步骤**：ACTION_WORDS 加列计划/排计划，LABELS 加「列执行计划」标签（gate false），stepCommand 输出 taskq plan
+- **剥壳表补「看」系动词**：「看看批次看板」的「看看」不再误当批次特征词（剥尽视作当前批，防 NEEDS_INFO 误拦截）
+- 测试 483（+5：按计划执行/重列计划/看板词/编排 plan 步骤/看系剥壳）
+
+**批次看板按批次落盘：dashboard-{批次}.html 可并存 + PANEL.html 快捷入口**：
+
+- **文件名规则**：`status --panel` 落 `queue/reports/dashboard-{批次}.html`（一批次一文件、历史批次可并存归档）；`--batch all` 落 `dashboard-all.html`；缺省最新批次（解析语义与 queueSummary 一致：最近使用批次 > 最新批次）
+- **PANEL.html 保留为快捷入口**：缺省生成时同步刷新，meta refresh 指向最新批次看板（双击即达，永远不覆盖 dashboard 本体）
+- help/guide 文案同步（四页门户描述更新为 dashboard-{批次}.html）
+- 测试 478（+1：文件名规则与快捷入口断言）
+
+**全链路体检修复：空队列仪式、计划外待办提示、help/SKILL 同步**：
+
+- **空队列 execute 不打架**：planBeforeExecute 检测队列为空直接跳过仪式——消除「先建任务」与「队列已清空」两句自相矛盾的输出
+- **计划圈定任务跑完 ≠ 队列清空**：batchRelay 与 relayNext 双路径在无待领任务时，若按计划执行（--plans/沿用计划）且队列还有计划外待办，如实提示「计划圈定任务已完成（N 个）。队列另有 M 个任务不在本计划内——taskq execute --replan 重列全景计划即可纳入接力」，不再误报「队列已清空」；未领取任务在 state.json 无状态条目（无条目 = 待办）也已纳入统计
+- **help.ts pipeline 文案同步五阶段**：补「3 列计划（非拦停）→ 4 执行（已有计划自动沿用）」；taskq-run SKILL 升级 v0.2.37（阶段剧本/--plans 按计划执行/先谋后动全语义）
+- 测试 477（+2：空队列跳过仪式、计划外待办提示含未领取无状态条目场景）
+
+**执行的就是这个计划：计划圈定执行范围 + SKILL/流水线衔接补全**：
+
+- **全景计划带 frontmatter 机读锚点**：与命名计划同构，PLAN.md 落盘带 tasks 清单——execute 沿用计划时按计划圈定任务集执行（不再退化为全部待办）；旧版无 frontmatter 计划兼容退化为全部待办
+- **planBeforeExecute 返回任务集**：仪式从纯提示升级为 { text, planTaskIds }，cli.ts/ask.ts 两个 execute 入口先仪式后接力（任务集与 --plans 合流，--plans 优先）；沿用提示标注「按计划圈定任务集执行（N 个任务）」
+- **--replan 语义闭环**：重列后新任务纳入计划（真机验证：圈定 1 任务 → 新增任务被计划排除 → --replan 后 3 任务全纳入）
+- **run 报错文案补 plan 阶段**（五阶段齐全）；taskq-plan SKILL 升级 v0.2.37（沿用/--replan/先谋后动/流水线点/多计划执行全语义）
+- 测试 475（plan.test 沿用用例补 planTaskIds 断言；全量并发下 planCommand 用例偶发失败经连续多轮确认环境偶发，非产品缺陷）
+
+**计划与执行无缝衔接：已有计划直接沿用，不再重复列**：
+
+- **execute 谋已定不再重谋**：批次已有 PLAN.md/PLAN.html 时，execute 前置仪式直接沿用现成计划（提示一行），不重复生成、不覆盖用户审阅后的人工调整；任务增减后要刷新用 `--replan` 强制重列
+- **流水线两阶段衔接**：pipeline 阶段 3 列计划落盘即被阶段 4 沿用——未圈定范围 execute 直接按全景计划接力，命名了计划则 `taskq execute --plans 计划名` 只跑计划圈定任务；run 剧本 execute 阶段文案同步「已有计划自动沿用」
+- help execute 行补 [--replan]
+- 测试 475（+1：沿用不重列与 --replan 强制重列）
+
+**计划默认双生落盘 + 计划生成不阻塞主流程**：
+
+- **plan-format 默认值 md → html**：不配置时计划默认同时落 PLAN.md（底稿人读机读）与 PLAN.html（同视觉页双击即看）；批次 BATCH.yaml 仍可用 plan-format: md（只底稿）/ none（只终端）收紧
+- **执行前计划生成加保险丝**：planBeforeExecute 全程 try/catch——写盘失败或渲染出错降级为一行警告（⚠️ 已跳过，不影响任务接力），execute 主流程照常领取任务；run 剧本 plan 阶段文案明示「生成失败不阻断执行」
+- 测试 474（+1：计划生成异常降级不阻断；默认双生断言并入既有用例）
+
+**PANEL.html 升级为批次看板：五态统计卡 + 类型分布 + 工时对账 + 优先级/逾期维度**。原面板只有一条进度条和一张清单表，现在按 speccore dashboard 思路补全多维度视图：
+
+- **五态统计卡**：总任务 / 已完成 / 进行中 / 待办 / 失败五张卡（draft 计入待办）
+- **任务类型分布**：按 spec.type 动态聚合（不硬编码清单，自定义类型照常入列），每类型一张卡——色徽章 + 完成数 + 预估工时小计 + 迷你进度条，8 色循环同 PLAN.html 视觉语言
+- **工时对账**：预估合计（estimate 聚合）vs 实际登记（done 任务 spent 聚合），有账可算时给出偏差（正=超支，负=省时）
+- **优先级分布**：P0/P1/P2 彩色徽章（有数据才显示该区）
+- **逾期红标**：due 早于今天且未 done 的任务在截止列红色加粗
+- **任务表扩九列**：状态图标/任务/类型/状态/优先级/预估/实际/截止/目标
+- **批次聚焦**：--panel 透传 --batch（修掉旧账：以前 --panel 永远渲染全量、忽略 --batch），标题标注批次名；缺省聚焦最新批次、--batch all 全量
+- 测试 473（+3：五态卡与类型分布与工时对账 / 优先级与逾期 / 批次聚焦）
+
+**先谋后动：执行多条任务默认先列计划**。计划不再是可选步骤，而是批量执行的前置仪式：
+
+- **execute 默认先计划**：`taskq execute` 领取任务前默认先落全景执行计划（批次 overview/PLAN.md，形态走 plan-format 配置），计划段前置亮给用户再领任务；`--no-plan` 强制跳过
+- **定向执行免仪式**：带 `--task/--module/--plans` 定向时用户已指定范围，不重复生成计划（自己的队列自己负责）；口语入口「批量执行」照走仪式
+- **run 剧本加 plan 阶段**：preset 五阶段 clarify → split → plan → execute → report，`run plan to execute` 可只跑「列计划 → 接力执行」两段；aliases plan/计划/列计划/排计划
+- **pipeline 剧本加列计划阶段**：六阶段 拆分 → 澄清 → 列计划（确定性一步，非拦停）→ 执行 → 收尾；计划是执行依据，生成即可往下走
+- 测试 470（+3：planBeforeExecute 三态 / ask 批量执行先计划落盘 / run 剧本五阶段与 plan 别名）
+
+**计划升级一等资产：命名计划 + 形态配置 + 按计划执行 + 列表与详情**。taskq plan 从一次性视图升级为可引用的执行资产：
+
+- **命名计划**：`taskq plan --name "计划名" [--tasks a,b] [--module m]` 对部分任务或功能模块圈定计划，落批次 `overview/plans/{slug}.md`；md 头部 frontmatter 的 tasks 清单是机读锚点（--plans 执行的依据），人读机读同一份底稿
+- **生成形态配置**：BATCH.yaml 新增 `plan-format: md | html | none`——md 只落底稿（默认）、html 伴生同院视觉 HTML 页（与 GUIDE/PANEL/CLARIFY/REPORT 同语言，状态分布条 + 拓扑清单 + 关键路径）、none 只终端输出不落盘（一次性视图，不可被 --plans 引用）；CLI 临时覆盖 `--format`
+- **按计划执行**：`taskq run --plans a,b` / `taskq execute --plans a,b` 多计划任务并集、仍按拓扑序接力；与 --task/--module 并集叠加；计划不存在明确报错（exit 12）
+- **查看计划**：`taskq plan --list` 列计划资产（名称/任务数/形态/创建时间）、`taskq plan --show <名>` 渲染详情带当前状态
+- **意图与技能**：ask 引擎新增 plan 意图（「列计划/做计划/看计划」须配动词才触发，弱信号「计划」不误触）；examples 项目新增 taskq-plan SKILL 薄包装
+- 全景计划（无 --name）沿用 overview/PLAN.md，html 形态时伴生 PLAN.html；测试 467（+9）
+
+**依赖声明手动一步到位 + 执行时疑似上游点名**。依赖关系的手动/自动两条路都补齐了最后一里：
+
+- **手动模式**：`taskq new --depends-on a,b` 建任务时一步声明多依赖（SPEC.md 落 depends-on 列表块）——不再事后手编 YAML；多依赖拓扑/悬空环检测/上下游摘要此前已就位，入口补齐后整条链路通顺
+- **自动模式（AI 判断）**：执行 prompt 新增「疑似上游（未声明 depends-on）」段——任务引用了他人将要产出的文件却未声明依赖时点名（产物路径 + 所属任务 + 判断规则），执行 AI 从此有据可依：需要真实内容则反馈用户补依赖，仅参考路径则忽略。与 clarify 隐式推导同一套匹配（精确 + 后缀兜底），豁免三态不变（已声明/自己产物/无主文件）
+- 为什么不做机械自动补依赖：引用上游产物 ≠ 需要其完成（可能只是参考格式）——语义判断留给 AI，CLI 只给精准素材（处理权在人）
+- 测试 458（+4：多依赖落盘 / 多上游分组去重 / 豁免三态 / prompt 段出现与缺席）
+
+**产出目录批次可配置 + 任务归巢**。默认落位从「类型硬编码 + 扁平」升级为「批次可配 + 任务院落」：
+
+- **批次产出目录覆盖**：`config/BATCH.yaml` 新增 `output-dirs`（类型 → 目录映射）——本批 doc 类归 `deliverables/`、data 类归 `data-2027/`，覆盖内置归位表；未列出的类型按内置走，字段损坏逐项回落不连坐
+- **默认落位任务归巢**：新增 `nest-outputs`（默认 true）——CLI 推断默认落位时生成 `{输出目录}{任务slug}/{任务slug}.md`（任务院落：多产物聚一处、互不踩踏、删任务即删目录）；false 回到扁平
+- **用户指定永不套目录**：SPEC.md 的 output 或描述里明确指定的产出路径，批次覆盖与归巢一律不介入——用户表达最高优先级（三查规则不变）
+- clarify 建议 / fix 机械修复 / 归巢落位三处共用单一事实来源（defaultOutputFor 加 opts，fixer 重复实现删除）；优先级链：用户指定 > 批次 output-dirs > 类型内置 outputDir
+- 测试 454（+5：批次解析两态 / 归巢落位 / 批次覆盖 / 指定优先）
+
+**依赖与计划三层落地**。依赖分析从「隐式引擎」升级为「开局全景」——CLI 把关系算清楚写进上下文，AI 不再靠悟：
+
+- **隐式依赖推导**：任务引用了他人的产物却未声明 depends-on → clarify 亮建议「引用上游产物 X（任务 A 产出）但未声明 depends-on——不补则 A 可能后跑，执行时拿不到真实产物只能脑补」。只建议不自动改（依赖声明是用户的表达）；已声明/引用自己产物/引用无主文件一律豁免
+- **执行计划显性化**：新命令 `taskq plan`——拓扑顺序 + 依赖边 + 模块分组 + 关键路径（最长依赖链），默认落盘批次 overview/PLAN.md；`taskq execute` 开局附计划摘要（任务数/待做/依赖边/关键路径/接下来）
+- **下游接力预告**：任务 prompt 新增「下游接力预告」段——谁 depends-on 我、它引用了我的哪个产物，产出路径与格式对齐下游（上游服务下游，而非下游追着猜）；与既有「上游依赖完成摘要」段合成上下游全景
+- 核心模块 plan.ts（buildPlanModel/renderPlan/renderPlanBrief）；测试 445（+6：隐式推导两态 / 计划模型 / 渲染摘要 / 下游段两态）
+
+**口语模糊词词表增强 + Excel 引用消解**。正常人说大白话的含糊全被抓到：
+
+- **口语动作词**：VAGUE_WORDS 增「整理一下/弄弄/搞个/搞一下/弄一下/改一下/检查下/有点/最近」——「帮忙弄弄」「搞个周报」这类不可验收的表达此前零命中
+- **口语指代词**：AMBIGUOUS_REFS 增「上次/这次/那天/同行/那个」——「上次开会说的事」「那个大客户」此前执行时只能靠猜
+- **Excel 进入引用链路**：bareRe 扩展名补 xlsx/xls，预算表等 Excel 引用可被消解与检测
+- examples batch-003 六个口语模糊任务全命中（「上次开会说的事整理一下」等），重量任务零误伤
+- 测试 439（+2：口语词表六态 / xlsx-xls 引用）
+
+**clarify 体检误报修复**。体检不再误伤合法形态：
+
+- **纯目录落位不判冲突**：output 是 `docs/`、`src/` 等占位目录时不再互撞——产出冲突只看具体文件路径
+- **上游产物引用豁免**：下游引用上游将要产出的文件（depends-on 链）不再报「引用悬空」——collectArtifacts 收集全队列 acceptance 产物，后缀匹配兜底
+- **bareRe 反引号截断根治**：反引号是路径包裹符，不再被负向后行排除——「`data/x.csv`」提取完整路径而非 basename（此前引用消解读错文件）
+- 测试 439（437 基础上 +2）
+
+**产出物位置三查**。产出位置的规则显性化：用户指定优先，类型默认兜底。
+
+- **用户指定优先**：任务描述里明确说了产出位置（「写到 docs/x.md」「优化 src/x.ts」）→ clarify 亮明「output 未填/不一致」，fix 机械修复直接按指定位置补（fix-log 留痕「按任务描述指出的产出位置」）；「读 data/x.csv」等输入引用不误提取
+- **默认落位显性化**：产出位置未指明 → clarify 建议按类型默认落位（doc→docs/{slug}.md、general→outputs/…），代码/数据类型提示明确文件或目录
+- 新增共享模块 output-location（extractStatedPaths/defaultOutputFor），clarify 与 fixer 共用单一事实来源；测试 434（+7：提取/指定优先/输入引用不误报/三查四态）
+
 ## 0.2.35（2026-11-05）
 
 **taskq new 英译接力**。纯中文任务名不再直接落拼音目录——默认「先英文、再拼音」：

@@ -6,6 +6,7 @@ import { buildSpec, readSpec } from '../../src/core/task-spec';
 import { resolveTaskType } from '../../src/core/task-type';
 import { scanQueue } from '../../src/core/queue';
 import { inferOutputPath, computeFixes, applyFix, resolveFixSwitch } from '../../src/core/fixer';
+import { extractStatedPaths } from '../../src/core/output-location';
 import { fixCommand } from '../../src/commands/fix';
 
 const cfg = (root: string) => ({ projectRoot: root, queueDir: join(root, 'queue'), metaDir: join(root, 'queue', '.taskchain') });
@@ -15,6 +16,13 @@ const cfg = (root: string) => ({ projectRoot: root, queueDir: join(root, 'queue'
 // ============================================================
 
 describe('fixer 纯函数：A 档修复项计算', () => {
+  it('extractStatedPaths：产出动词 + 路径 → 提取；输入引用（读/参考）不误提取', () => {
+    expect(extractStatedPaths('把说明写到 docs/use-manual.md 里')).toEqual(['docs/use-manual.md']);
+    expect(extractStatedPaths('优化 src/api/login.ts 的响应速度')).toEqual(['src/api/login.ts']);
+    expect(extractStatedPaths('读 data/sales.csv 汇总成周报')).toEqual([]);
+    expect(extractStatedPaths('参考 research/jingping.md 的框架写分析')).toEqual([]);
+  });
+
   it('inferOutputPath：非代码类型按输出目录推断，data/代码类型不猜扩展名', () => {
     const spec = buildSpec('01-migrate-guide', '/x', { goal: 'g', type: 'doc', output: '', acceptance: {}, draft: true }, '', 'general');
     expect(inferOutputPath(spec, resolveTaskType('/tmp', 'doc'))).toBe('docs/migrate-guide.md');
@@ -36,6 +44,42 @@ describe('fixer 纯函数：A 档修复项计算', () => {
     const items = computeFixes(spec, resolveTaskType('/tmp', 'general'));
     expect(items.find((i) => i.kind === 'role')).toBeUndefined();
     expect(items.map((i) => i.kind)).toEqual(['output', 'acceptance', 'draft']);
+  });
+
+  it('computeFixes：output 空 + 描述指出产出路径 → 按用户指定补（不按类型推断）', () => {
+    const spec = buildSpec('01-bangong-shuoming', '/x', { goal: '把交接说明写到 docs/jiaojie-shuoming.md 里', type: 'general', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '正文', 'general');
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'general'));
+    const out = items.find((i) => i.kind === 'output');
+    expect(out?.after).toBe('output: docs/jiaojie-shuoming.md');
+    expect(out?.description).toContain('任务描述指出的产出位置');
+  });
+
+  it('computeFixes：描述里的输入引用（读 xx.csv）不误当产出路径', () => {
+    const spec = buildSpec('01-zhoubao', '/x', { goal: '读 data/sales.csv 汇总成周报', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'));
+    const out = items.find((i) => i.kind === 'output');
+    expect(out?.after).toBe('output: docs/zhoubao.md');
+  });
+
+  it('computeFixes：nest 归巢 → {输出目录}{任务slug}/{任务slug}.md（任务院落）', () => {
+    const spec = buildSpec('01-guichao', '/x', { goal: '写一份周报', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'), { nest: true });
+    const out = items.find((i) => i.kind === 'output');
+    expect(out?.after).toBe('output: docs/guichao/guichao.md');
+  });
+
+  it('computeFixes：批次 output-dirs 覆盖 + 归巢 → 目录取批次配置，形态归巢', () => {
+    const spec = buildSpec('02-fugai', '/x', { goal: '写一份周报', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'), { batchDirs: { doc: 'deliverables/' }, nest: true });
+    const out = items.find((i) => i.kind === 'output');
+    expect(out?.after).toBe('output: deliverables/fugai/fugai.md');
+  });
+
+  it('computeFixes：描述指定路径 → 批次覆盖与归巢都不介入（用户指定优先）', () => {
+    const spec = buildSpec('03-zhiding', '/x', { goal: '把说明写到 docs/jiaojie.md 里', type: 'doc', output: '', acceptance: { artifacts: [], checks: [], review: '' }, draft: true }, '', 'general');
+    const items = computeFixes(spec, resolveTaskType('/tmp', 'doc'), { batchDirs: { doc: 'deliverables/' }, nest: true });
+    const out = items.find((i) => i.kind === 'output');
+    expect(out?.after).toBe('output: docs/jiaojie.md'); // 用户指定优先，不套目录
   });
 
   it('computeFixes：data 类型 output 不可推断 → 只补 role，不补 acceptance/draft', () => {
@@ -204,7 +248,7 @@ describe('fixCommand 命令路径：非交互提示 / 预览 / 授权 / 定向',
     expect(out).toContain('✅ 已修复 4 处');
     expect(out).toContain('重新体检确认：taskq clarify');
     const after = readFileSync(specPath, 'utf-8');
-    expect(after).toContain('output: docs/migrate-guide.md');
+    expect(after).toContain('output: docs/migrate-guide/migrate-guide.md'); // 默认归巢：任务院落
     expect(after).not.toContain('draft: true');
   });
 
@@ -281,7 +325,7 @@ describe('fixCommand 覆盖开关：批次级 / CLI 临时 / 任务级', () => {
     writeFileSync(join(root, 'queue', 'batch-001', 'config', 'BATCH.yaml'), 'overwrite: false\n', 'utf-8');
     const out = fixCommand(c, { yes: true, forceOverwrite: true });
     expect(out).toContain('✅ 已修复 4 处');
-    expect(readFileSync(specPath, 'utf-8')).toContain('output: docs/migrate-guide.md');
+    expect(readFileSync(specPath, 'utf-8')).toContain('output: docs/migrate-guide/migrate-guide.md');
   });
 
   it('任务级 SPEC.md overwrite: false → 处方跳过不落盘（--yes 也拦）', () => {
@@ -314,7 +358,7 @@ describe('fixCommand 覆盖开关：批次级 / CLI 临时 / 任务级', () => {
     // batch-001 默认开：定向修 batch-001 的任务照常覆盖
     const out1 = fixCommand(c, { yes: true, taskId: '01-migrate-guide' });
     expect(out1).toContain('✅ 已修复 4 处');
-    expect(readFileSync(specPath, 'utf-8')).toContain('output: docs/migrate-guide.md');
+    expect(readFileSync(specPath, 'utf-8')).toContain('output: docs/migrate-guide/migrate-guide.md');
   });
 
   it('全队修混合批次：各任务按各自批次判定（开的修、关的拦）', () => {
@@ -327,7 +371,7 @@ describe('fixCommand 覆盖开关：批次级 / CLI 临时 / 任务级', () => {
     const out = fixCommand(c, { yes: true });
     expect(out).toContain('✅ 已修复 4 处');
     expect(out).toContain('02-guide'); // 被拦任务点名
-    expect(readFileSync(specPath, 'utf-8')).toContain('output: docs/migrate-guide.md');
+    expect(readFileSync(specPath, 'utf-8')).toContain('output: docs/migrate-guide/migrate-guide.md');
     expect(readFileSync(join(d2, 'SPEC.md'), 'utf-8')).toBe(DRAFT_SPEC); // 未被覆盖
   });
 });

@@ -25,6 +25,7 @@ export interface NewOptions {
   estimate?: number; // 预估工时（小时）
   due?: string;      // 截止日期（YYYY-MM-DD 或「明天/下周一」口语）
   role?: string;    // 执行角色（内置或 .taskchain/ROLES/{role}.md；type 管形态，role 管专业）
+  dependsOn?: string[]; // 依赖的上游任务 ID（多个；手动模式一步声明，执行按拓扑序排在它们后面）
   goal: string;     // 任务描述（用户原话）
 }
 
@@ -139,6 +140,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
         estimate: opts.estimate,
         due: opts.due ? parseDue(opts.due) || opts.due : undefined,
         role: opts.role,
+        dependsOn: opts.dependsOn,
         draft: true,
         body: subTpl.content,
       }),
@@ -182,6 +184,7 @@ export function newCommand(cfg: TaskQConfig, opts: NewOptions): string {
       estimate: opts.estimate,
       due: opts.due ? parseDue(opts.due) || opts.due : undefined,
       role: opts.role,
+      dependsOn: opts.dependsOn,
       // 新任务恒定 draft 骨架起步：补全规格（clarify 通过）前，taskq run 拦截（--skip-draft 可强跑）
       draft: true,
       body: tpl.content,

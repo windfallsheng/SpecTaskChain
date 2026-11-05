@@ -47,6 +47,17 @@ describe('引用消解：让 AI 读到的都是真的', () => {
     expect(refs.find((r) => r.target === 'https://example.com/api')?.kind).toBe('url');
   });
 
+  it('反引号包裹的裸路径提取完整路径（不截断为 basename）', () => {
+    const refs = extractReferences('基于总表 `data/yusuan-shenbao-2027.csv` 做测算');
+    expect(refs.map((r) => r.target)).toContain('data/yusuan-shenbao-2027.csv');
+  });
+
+  it('裸路径覆盖 xlsx/xls 扩展名（预算表等 Excel 引用）', () => {
+    const refs = extractReferences('按《预算科目表》（materials/yusuan-kemu-v3.xlsx）归并，源表见 data/shenbao/a.xls');
+    expect(refs.map((r) => r.target)).toContain('materials/yusuan-kemu-v3.xlsx');
+    expect(refs.map((r) => r.target)).toContain('data/shenbao/a.xls');
+  });
+
   it('消解引用：存在的文件读全文嵌入', () => {
     const dir = mkdtempSync(join(tmpdir(), 'stc-ref-'));
     writeFileSync(join(dir, 'plan.md'), '真实内容：先导出用户表', 'utf-8');
@@ -205,5 +216,21 @@ acceptance:
     const issues = detectTaskIssues(spec);
     const refIssue = issues.find((i) => i.message.includes('读不到真实内容'));
     expect(refIssue?.level).toBe('blocking');
+  });
+
+  it('引用上游将要产出的文件 → 已知产物集合豁免，不报悬空', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stc-known-art-'));
+    const content = `---
+goal: 基于总表 data/yusuan-shenbao-2027.csv 做测算
+output: research/cesuan.md
+acceptance:
+  artifacts:
+    - path: research/cesuan.md
+---
+见总表`;
+    const { data, body } = parseFrontmatter(content);
+    const spec = buildSpec('01-ce-suan', dir, data, body, 'general');
+    const issues = detectTaskIssues(spec, dir, new Set(['data/yusuan-shenbao-2027.csv']));
+    expect(issues.find((i) => i.message.includes('读不到真实内容'))).toBeUndefined();
   });
 });

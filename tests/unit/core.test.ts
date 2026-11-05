@@ -9,13 +9,14 @@ import {
   detectTaskIssues,
   detectDanglingDeps,
   detectOutputConflicts,
+  detectImplicitDeps,
 } from '../../src/core/clarify';
 import { runAcceptance } from '../../src/core/acceptance';
 import { recognizeIntent } from '../../src/core/intent';
 import { buildExecutionSequence } from '../../src/core/queue';
 import { askCommand } from '../../src/commands/ask';
 import { TaskQConfig } from '../../src/core/config';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -89,12 +90,57 @@ describe('clarify：两级信号 + 分级报告', () => {
     expect(msgs).toContain('那几个');
   });
 
+  it('口语模糊词与口语指代命中（正常人说大白话的场景）', () => {
+    const cases: Array<[string, string]> = [
+      ['把上次开会说的事整理一下', '整理一下|上次'],
+      ['那个大客户的数据帮忙弄弄', '弄弄|那个'],
+      ['帮我搞个周报', '搞个'],
+      ['检查下代码有没有问题', '检查下'],
+      ['看看同行最近都在做什么', '最近|同行'],
+      ['登录接口有点慢，优化一下', '优化一下'],
+      ['这接口有点慢', '有点'],
+    ];
+    for (const [goal, expected] of cases) {
+      const spec = buildSpec('t1', '/x', { type: 'general', goal, output: 'docs/', acceptance: { review: 'r' } }, '', 'general');
+      const msgs = detectTaskIssues(spec).map((i) => i.message).join('|');
+      for (const word of expected.split('|')) {
+        expect(msgs, `goal=${goal}`).toContain(word);
+      }
+    }
+  });
+
+  it('隐式依赖推导：引用他人产物未声明 depends-on → 建议补声明', () => {
+    const specA = buildSpec('a', '/x', { type: 'data', goal: '合并数据', output: 'data/all.csv', acceptance: { artifacts: [{ path: 'data/all.csv' }] } }, '', 'general');
+    const specB = buildSpec('b', '/x', { type: 'research', goal: '写报告', output: 'research/r.md', acceptance: { review: 'r' } }, '基于总表 data/all.csv 做分析', 'general');
+    const queue = { tasks: [specA, specB], modules: [] };
+    const issues = detectImplicitDeps(queue);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].taskId).toBe('b');
+    expect(issues[0].message).toContain('data/all.csv');
+    expect(issues[0].message).toContain('depends-on: a');
+  });
+
+  it('隐式依赖推导豁免：已声明依赖 / 引用自己产物 / 引用无主文件', () => {
+    const specA = buildSpec('a', '/x', { type: 'data', goal: '合并数据', output: 'data/all.csv', acceptance: { artifacts: [{ path: 'data/all.csv' }] } }, '', 'general');
+    const specB = buildSpec('b', '/x', { type: 'research', goal: '写报告', output: 'research/r.md', acceptance: { review: 'r' }, 'depends-on': ['a'] }, '基于 data/all.csv 分析', 'general');
+    const specC = buildSpec('c', '/x', { type: 'data', goal: '处理', output: 'data/c.csv', acceptance: { artifacts: [{ path: 'data/c.csv' }] } }, '参考 data/c.csv 与 materials/无主.md', 'general');
+    const queue = { tasks: [specA, specB, specC], modules: [] };
+    expect(detectImplicitDeps(queue)).toHaveLength(0);
+  });
+
   it('依赖悬空（阻塞级）与产出冲突（阻塞级）', () => {
-    const specA = buildSpec('a', '/x', { goal: 'A', output: 'docs/', acceptance: { review: 'r' }, 'depends-on': ['ghost'] }, '', 'general');
-    const specB = buildSpec('b', '/x', { goal: 'B', output: 'docs/', acceptance: { review: 'r' } }, '', 'general');
+    const specA = buildSpec('a', '/x', { goal: 'A', output: 'docs/a.md', acceptance: { review: 'r' }, 'depends-on': ['ghost'] }, '', 'general');
+    const specB = buildSpec('b', '/x', { goal: 'B', output: 'docs/a.md', acceptance: { review: 'r' } }, '', 'general');
     const queue = { tasks: [specA, specB], modules: [] };
     expect(detectDanglingDeps(queue)[0].level).toBe('blocking');
     expect(detectOutputConflicts(queue)[0].level).toBe('blocking');
+  });
+
+  it('产出冲突：纯目录落位（docs/ 等占位）不判冲突', () => {
+    const specA = buildSpec('a', '/x', { goal: 'A', output: 'docs/', acceptance: { review: 'r' } }, '', 'general');
+    const specB = buildSpec('b', '/x', { goal: 'B', output: 'docs/', acceptance: { review: 'r' } }, '', 'general');
+    const queue = { tasks: [specA, specB], modules: [] };
+    expect(detectOutputConflicts(queue)).toHaveLength(0);
   });
 
   it('无问题报告为清晰可执行', () => {
@@ -143,9 +189,40 @@ describe('intent：口语入口', () => {
   it('「建个任务：写文档」→ new', () => {
     expect(recognizeIntent('建个任务：写文档').intent).toBe('new');
   });
+  it('「列计划」「做计划」「看计划」→ plan；弱信号「计划」不误触', () => {
+    expect(recognizeIntent('给这几个任务列个计划').intent).toBe('plan');
+    expect(recognizeIntent('制定计划').intent).toBe('plan');
+    expect(recognizeIntent('计划一下').intent).toBe('plan');
+    expect(recognizeIntent('看下计划').intent).toBe('plan');
+    expect(recognizeIntent('plan').intent).toBe('plan');
+    // 弱信号：单独「计划」不配动词时走默认（help 兜底），不误触
+    expect(recognizeIntent('计划').intent).not.toBe('plan');
+  });
   it('「跑队列」→ run，「看下进度」→ status', () => {
     expect(recognizeIntent('跑队列').intent).toBe('run');
     expect(recognizeIntent('看下进度').intent).toBe('status');
+  });
+  it('「重列计划」→ plan（覆盖重列天然即 --replan 语义）', () => {
+    expect(recognizeIntent('重列计划').intent).toBe('plan');
+    expect(recognizeIntent('重新列个计划').intent).toBe('plan');
+  });
+  it('「执行计划」「按计划执行 A,B」→ run 且提取计划名单（--plans 语义，不再误入 plan）', () => {
+    expect(recognizeIntent('执行计划').intent).toBe('run');
+    const r = recognizeIntent('按计划执行 上线计划、收尾计划');
+    expect(r.intent).toBe('run');
+    expect(r.params.planNames).toEqual(['上线计划', '收尾计划']);
+    const e = recognizeIntent('批量执行 按计划执行 上线计划');
+    expect(e.intent).toBe('execute');
+    expect(e.params.planNames).toEqual(['上线计划']);
+  });
+  it('「看板」「dashboard」→ status（口语看板直通批次看板）', () => {
+    expect(recognizeIntent('看板').intent).toBe('status');
+    expect(recognizeIntent('看看批次看板').intent).toBe('status');
+    expect(recognizeIntent('dashboard').intent).toBe('status');
+  });
+  it('「看看批次看板」的「看看」不误当批次特征词（剥壳后视作当前批）', () => {
+    const r = recognizeIntent('看看批次看板');
+    expect(r.params.batchRef?.kind).not.toBe('fuzzy');
   });
   it('「重跑 34-cshidaima」→ reset 且提取目标；「重新执行」→ reset 无目标不猜', () => {
     const r = recognizeIntent('重跑 34-cshidaima');
@@ -272,6 +349,17 @@ describe('ask：素材提取与退出码传播（防 \\s 转义回归，素材�
     expect(r.exitCode).toBe(0);
     expect(r.output).not.toContain('[TASKQ_PROMPT]');
   });
+  it('「批量执行」默认先列计划再领任务（输出含计划段，PLAN.md 落盘）', () => {
+    const cfg = askCfg();
+    mkdirSync(join(cfg.queueDir, 'batch-001', 'task-a'), { recursive: true });
+    writeFileSync(join(cfg.queueDir, 'batch-001', 'task-a', 'SPEC.md'), '---\ntype: doc\ngoal: 写文档\noutput: docs/a.md\nacceptance:\n  review: r\n---\n', 'utf-8');
+    const r = askCommand(cfg, '批量执行');
+    expect(r.output).toContain('📋 执行计划');
+    expect(r.output).toContain('计划已落盘');
+    expect(existsSync(join(cfg.queueDir, 'batch-001', 'overview', 'PLAN.md'))).toBe(true);
+    expect(existsSync(join(cfg.queueDir, 'batch-001', 'overview', 'PLAN.html'))).toBe(true);
+  });
+
   it('未识别兜底 → exitCode 0 且提示可用命令', () => {
     const r = askCommand(askCfg(), '今天天气怎么样');
     expect(r.exitCode).toBe(0);

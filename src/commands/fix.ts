@@ -67,11 +67,14 @@ export function fixCommand(cfg: TaskQConfig, opts: FixOptions): string {
   const refused = targets.filter((t) => t.overwrite === false);
   const plans = targets
     .filter((t) => t.overwrite !== false)
-    .map((t) => ({
-      task: t,
-      specPath: join(t.dir, 'SPEC.md'),
-      items: computeFixes(t, resolveTaskType(cfg.metaDir, t.type)),
-    }))
+    .map((t) => {
+      const b = locateBatchConfig(t.dir, cfg.queueDir); // 产出推断按任务所属批次（产出目录覆盖 + 归巢）
+      return {
+        task: t,
+        specPath: join(t.dir, 'SPEC.md'),
+        items: computeFixes(t, resolveTaskType(cfg.metaDir, t.type), { batchDirs: b['output-dirs'], nest: b['nest-outputs'] }),
+      };
+    })
     .filter((p) => p.items.length);
   if (!plans.length) {
     const refusedNote = refused.length ? `\n（${refused.length} 个任务 SPEC.md 设了 overwrite: false，处方仅提示不落盘：${refused.map((t) => t.id).join('、')}）` : '';

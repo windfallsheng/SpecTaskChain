@@ -1,6 +1,6 @@
 // 批次测试：多批次目录 / 聚焦最新批次 / 编号全局递增 / --batch 指定老批次
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { TaskQConfig } from '../../src/core/config';
@@ -79,6 +79,15 @@ describe('new：默认落最新批次 + 命名不带序号', () => {
     const cfg = makeCfg();
     newCommand(cfg, { goal: '写文档', name: 'xiewendang', draft: true });
     expect(existsSync(join(cfg.queueDir, 'batch-001', 'task-xiewendang', 'SPEC.md'))).toBe(true);
+  });
+
+  it('--depends-on 多依赖 → SPEC.md 落 depends-on 列表块（手动模式一步声明）', () => {
+    const cfg = makeCfg();
+    newCommand(cfg, { goal: '写汇总报告', name: 'huizong', draft: true, dependsOn: ['shuju-shouji', 'fenxi-fangan'] });
+    const spec = readFileSync(join(cfg.queueDir, 'batch-001', 'task-huizong', 'SPEC.md'), 'utf-8');
+    expect(spec).toContain('depends-on:');
+    expect(spec).toContain('  - shuju-shouji');
+    expect(spec).toContain('  - fenxi-fangan');
   });
 
   it('存在 batch-002 时新任务落最新批次，命名与老批次不撞', () => {
