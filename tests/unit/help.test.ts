@@ -29,7 +29,7 @@ describe('help 总览：命令表 + 目录布局 + 核心概念', () => {
     expect(h).toContain('项目目录布局（taskq 只管理 queue/，其余不碰）');
     expect(h).toContain('队列本体：批次/任务/状态账本（唯一管理区）');
     expect(h).toContain('产出院落（产出与任务同住）');
-    expect(h).toContain('用户自组织区：名字随你；素材指给 split/pipeline');
+    expect(h).toContain('用户自组织区：名字随你；素材指给 split（或对 AI 说需求走全流程）');
   });
   it('核心概念速览：验收三态 / 退出码 / 批次聚焦', () => {
     const h = helpText();
@@ -67,7 +67,7 @@ describe('help guide 引导页：三步 + 三类目录 + 概念 + FAQ', () => {
     expect(g).toContain('产出院落：任务目录内 outputs/（产出与任务同住）');
     expect(g).toContain('queue/{批次}/{任务目录}/outputs/');
     expect(g).toContain('用户自组织区（自由命名，taskq 不碰）');
-    expect(g).toContain('materials/ 素材（split/pipeline 入口）');
+    expect(g).toContain('materials/ 素材（split 入口，或对 AI 说需求走全流程）');
   });
   it('字段速览：SPEC.md 人话版字段说明（三必填 + 可选字段）', () => {
     const g = guideText();

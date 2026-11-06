@@ -16,7 +16,7 @@ const COMMANDS: Array<[string, string]> = [
   ['init', '初始化队列骨架 + 宿主接力规则与 SKILL 入口'],
   ['new', '建任务（对话成规格：AI 生成草案，你确认）'],
   ['split', '文档拆任务（只出 goal，验收留到澄清点头）'],
-  ['pipeline', '端到端流水线（素材→拆分→澄清→执行→收尾）'],
+  ['pipeline', '端到端流水线（宿主 AI 编排入口——对话说需求即走，无需手动敲）'],
   ['clarify', '随叫随到的体检（写完查 / 建链查 / 翻车查）'],
   ['run', '无人值守接力执行（断了接着跑，直到队列清空）'],
   ['execute', '批次接力（一次领取 N 个任务的完整 prompt）'],
@@ -98,7 +98,7 @@ ${SCAN_LAYERS}
 </div>
 <div class="zone">
   <h3>③ 用户自组织区 —— 自由命名，taskq 不认识也不碰</h3>
-  <p><b>materials/</b> 素材（split/pipeline 入口）· <b>specs/</b> 手写规格 · <b>logs/</b> 日志 · …随你，素材文档指给 split / pipeline 即可</p>
+  <p><b>materials/</b> 素材（split 入口，或对 AI 说需求走全流程）· <b>specs/</b> 手写规格 · <b>logs/</b> 日志 · …随你，素材文档指给 split 或交给 AI 即可</p>
 </div>
 
 <h2>命令速查</h2>
@@ -153,7 +153,7 @@ ${SCAN_LAYERS}
   <p><b>Q: run 被拦截（退出码 12）怎么办？</b><br>A: 看拦截原因：draft 先 clarify 补全或 --skip-draft 强跑；模块缺共享 spec 先补 CONSTRAINTS.md；doing 有人干活等它 done；failed 修复后重新 done 验收。</p>
   <p><b>Q: 换会话/换工具怎么接着跑？</b><br>A: 账本在文件里，不在任何 AI 的脑子里——taskq run 一执行即续跑（PROGRESS.md 留痕自动注入）。</p>
   <p><b>Q: 想重跑某个任务？</b><br>A: taskq reset &lt;任务ID&gt;（软复位留痕保留 = 调整补充）；从头再来 taskq reset --all --hard。</p>
-  <p><b>Q: 素材文档放哪？</b><br>A: 自组织区（如 materials/），taskq split materials/x.md 或 taskq pipeline materials/ 指过去。</p>
+  <p><b>Q: 素材文档放哪？</b><br>A: 自组织区（如 materials/），taskq split materials/x.md 指过去；或直接对 AI 说「把 materials/x.md 做成任务跑完」。</p>
 </div>
 
 <footer>完整文档：https://github.com/windfallsheng/SpecTaskChain/tree/main/docs · Chain = 接力（relay），不是依赖（dependency）。</footer>
