@@ -1,5 +1,12 @@
 # CHANGELOG
 
+**v0.2.40：pipeline 定位归位（宿主 AI 编排入口）+ 产出归巢体检清零**：
+
+- **pipeline 定位归位**：pipeline 本就不是终端用户手动敲的命令（CLI 只出剧本 + 采集素材，编排归宿主 AI），说明书里不再推给用户——help 命令总览与 guide 速查表标注「宿主 AI 编排入口，对话说需求即走，无需手动敲」，help pipeline 详情页加定位说明，素材入口与 FAQ 改口「split 入口，或对 AI 说需求走全流程」；ask 口语入口「跑流水线」照常路由（用户对 AI 说、AI 内部调，本命用法不动）
+- **产出归巢体检清零**：docs/queue-structure 任务类型表 general 行旧镜像落点归巢（outputs/{批次}/{任务目录}/ → 任务目录内 outputs/）；init.ts 目录布局与 SKILL 模板主入口两处 pipeline 字样同步弱化；examples 现场 GUIDE.html 重新生成（plan 小节 + pipeline 弱化 + 字段速览 + overview 全齐）
+- 测试 484 全绿；版本号 readVersion 动态读无硬编码漂移
+
+
 **v0.2.39：产出落位归巢（任务目录内 outputs/）+ 任务规格字段说明书 + 六页暗色换装**：
 
 - **产出落位归巢（方向性修正）**：默认产出不再镜像到项目根 outputs/{批次}/{任务目录}/，而是住进任务自己的 outputs/（queue/{批次}/{任务目录}/outputs/，产出与任务同住）——文档类精确落 {slug}.md，代码/data 类落院落不猜文件名；优先级三级：任务描述/SPEC.md 明确指定路径 > 用户改过的 output 字段 > 任务目录内 outputs/ 默认；fixer/clarify 调用链全量传 root（相对路径落位），help/guide/init 文案与 README/docs 六篇同步，「镜像队列层级」旧词清零；examples 现场三任务双形态实测（指定 data/ 不被碰、清空 output 默认落位落盘 + fix-log 留痕 + sources/ 归档）
